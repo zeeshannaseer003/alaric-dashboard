@@ -3,154 +3,1266 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Alaric dashboard</title>
+<title>Alaric — Provider Support Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0f0f11;--fg:#f4f4f5;--card:#18181b;--hover:#1f1f23;--border:#27272a;--muted:#a1a1aa;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444;--side:#09090b;--r:12px;--p:#14b8a6;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-html[data-role=staff]{--p:#6366f1}html[data-role=admin]{--p:#f97316}
-*{box-sizing:border-box;margin:0;padding:0}
-html,body{min-height:100%;background:var(--bg);color:var(--fg);font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
-.app{display:flex;min-height:100vh}
-.side{width:250px;background:var(--side);border-right:1px solid var(--border);padding:22px 14px;display:flex;flex-direction:column;gap:6px;position:sticky;top:0;height:100vh;overflow-y:auto;flex-shrink:0}
-.logo{font-size:1.3rem;font-weight:700;padding-left:12px;margin-bottom:14px}
-.roles{display:flex;gap:4px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:4px;margin-bottom:14px}
-.roles button{flex:1;background:none;border:0;color:var(--muted);font:500 12px inherit;font-family:inherit;padding:7px 4px;border-radius:7px;cursor:pointer}
-.roles button.on{background:var(--p);color:#fff}
-.tag{font-size:12px;color:var(--muted);padding:0 12px 8px}
-.nav{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:10px;color:var(--muted);background:none;border:0;font:500 14px inherit;font-family:inherit;text-align:left;cursor:pointer;transition:.2s}
-.nav:hover{background:var(--card);color:#fff}.nav.on{background:var(--p);color:#fff}
-.main{flex:1;padding:32px;min-width:0;max-width:1100px}
-h1{font-size:1.7rem;font-weight:700}h2{font-size:1.05rem;font-weight:600;margin-bottom:12px}
-.sub{color:var(--muted);margin:6px 0 24px;font-size:.95rem}
-.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:22px;margin-bottom:20px}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;margin-bottom:20px}
-.stats .card{margin:0}.stat .l{color:var(--muted);font-size:.85rem;margin-bottom:8px}.stat .v{font-size:1.7rem;font-weight:700}
-.wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:480px}
-th,td{padding:13px 14px;text-align:left;border-bottom:1px solid var(--border);font-size:.92rem}
-th{color:var(--muted);font-weight:500;font-size:.82rem}
-tr[data-go]{cursor:pointer}tr:hover td{background:var(--hover)}
-.b{display:inline-block;padding:3px 10px;border-radius:99px;font-size:.78rem;font-weight:500;background:#27272a;white-space:nowrap}
-.b.ok{color:var(--ok);background:#22c55e22}.b.warn{color:var(--warn);background:#f59e0b22}.b.bad{color:var(--bad);background:#ef444422}.b.info{color:#a5b4fc;background:#6366f122}
-.btn{background:var(--p);color:#fff;border:0;border-radius:10px;padding:10px 18px;font:500 14px inherit;font-family:inherit;cursor:pointer}
-.btn.s{padding:6px 12px;font-size:.82rem}.btn.o{background:none;border:1px solid var(--border);color:var(--fg)}.btn.d{background:#ef444422;color:var(--bad)}
-label{display:block;color:var(--muted);font-size:.85rem;margin:0 0 6px}
-input,textarea,select{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--fg);padding:11px 12px;font:inherit;margin-bottom:16px}
-textarea{min-height:110px;resize:vertical}
-.bar{display:flex;gap:10px;margin-bottom:14px}.bar input{margin:0;flex:1}.bar select{margin:0;width:150px}
-.msg{margin-top:12px;font-size:.9rem;color:var(--ok)}.msg.e{color:var(--bad)}
-.banner{display:flex;gap:10px;background:#f59e0b14;border:1px solid #f59e0b55;color:#fbbf24;border-radius:var(--r);padding:14px 18px;font-size:.9rem;margin-bottom:20px}
-.banner.ok{background:#22c55e14;border-color:#22c55e55;color:var(--ok)}
-.meta{display:flex;flex-wrap:wrap;gap:8px 20px;color:var(--muted);font-size:.85rem;margin:8px 0 18px}
-.tl{display:flex;margin:6px 0 22px}.tl div{flex:1;font-size:.8rem;color:var(--muted);text-align:center;position:relative;padding-top:20px}
-.tl div:before{content:"";position:absolute;top:0;left:50%;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:var(--border)}
-.tl div:after{content:"";position:absolute;top:5px;left:-50%;width:100%;height:2px;background:var(--border);z-index:-1}.tl div:first-child:after{display:none}
-.tl div.on{color:var(--fg)}.tl div.on:before,.tl div.on:after{background:var(--p)}
-.ans{border-left:3px solid var(--p);padding-left:14px;margin-bottom:16px}.ans small{color:var(--muted)}.ans p{margin-top:6px;line-height:1.55}
-.back{background:none;border:0;color:var(--muted);cursor:pointer;font:inherit;margin-bottom:14px}.back:hover{color:#fff}
-.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.chk{width:auto;margin:0}
-.priv{display:flex;gap:12px;background:#f59e0b14;border:1px solid #f59e0b55;border-radius:var(--r);padding:16px 18px;font-size:.88rem;color:#fbbf24}.priv b{color:#fcd34d}
-:focus-visible{outline:2px solid var(--p);outline-offset:2px}
-@media(max-width:768px){.app{flex-direction:column}.side{width:100%;height:auto;position:relative;flex-direction:row;overflow-x:auto;padding:12px;align-items:center}.logo,.tag{display:none}.roles{margin:0 8px 0 0;flex-shrink:0}.nav{flex-shrink:0;white-space:nowrap}.main{padding:20px}.bar{flex-direction:column}.bar select{width:100%}}
+:root {
+  --bg: #0a0a0c;
+  --fg: #f4f4f5;
+  --card: #141417;
+  --card-hover: #1a1a1f;
+  --border: #27272a;
+  --border-light: #3f3f46;
+  --muted: #a1a1aa;
+  --muted-2: #71717a;
+  --ok: #22c55e;
+  --ok-bg: rgba(34,197,94,0.12);
+  --warn: #f59e0b;
+  --warn-bg: rgba(245,158,11,0.12);
+  --bad: #ef4444;
+  --bad-bg: rgba(239,68,68,0.12);
+  --info: #818cf8;
+  --info-bg: rgba(99,102,241,0.12);
+  --side: #09090b;
+  --r: 14px;
+  --p: #14b8a6;
+  --p-hover: #0d9488;
+  --shadow: 0 4px 24px rgba(0,0,0,0.25);
+  --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html[data-role="staff"] { --p: #6366f1; --p-hover: #4f46e5; }
+html[data-role="admin"] { --p: #f97316; --p-hover: #ea580c; }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+}
+
+/* Layout */
+.app { display: flex; min-height: 100vh; }
+
+.side {
+  width: 260px;
+  background: var(--side);
+  border-right: 1px solid var(--border);
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  flex-shrink: 0;
+  transition: transform var(--transition);
+}
+
+.logo {
+  font-size: 1.4rem;
+  font-weight: 700;
+  padding: 4px 12px 16px;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo-icon {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, var(--p), #0d9488);
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.roles {
+  display: flex;
+  gap: 3px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 16px;
+}
+
+.roles button {
+  flex: 1;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font: 500 12px inherit;
+  padding: 8px 4px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.roles button:hover { color: var(--fg); }
+.roles button.on {
+  background: var(--p);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.tag {
+  font-size: 11px;
+  color: var(--muted-2);
+  padding: 0 12px 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 11px;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  font: 500 13.5px inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--transition);
+  position: relative;
+}
+
+.nav:hover { background: var(--card); color: #fff; }
+.nav.on {
+  background: var(--p);
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+}
+
+.nav .badge {
+  margin-left: auto;
+  background: rgba(255,255,255,0.2);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 99px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.nav.on .badge { background: rgba(255,255,255,0.25); }
+
+.main {
+  flex: 1;
+  padding: 36px 40px;
+  min-width: 0;
+  max-width: 1120px;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin-bottom: 4px;
+}
+
+h2 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: 14px;
+  letter-spacing: -0.01em;
+}
+
+.sub {
+  color: var(--muted);
+  margin: 0 0 28px;
+  font-size: 0.95rem;
+}
+
+/* Cards */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 22px;
+  margin-bottom: 20px;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.card:hover { border-color: var(--border-light); }
+
+/* Stats */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.stats .card {
+  margin: 0;
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.stats .card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 80px;
+  height: 80px;
+  background: radial-gradient(circle at top right, var(--p), transparent 70%);
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+.stat .l {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.stat .v {
+  font-size: 1.85rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.stat .delta {
+  font-size: 0.78rem;
+  color: var(--muted-2);
+  margin-top: 6px;
+}
+
+/* Tables */
+.wrap { overflow-x: auto; border-radius: var(--r); }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 520px;
+}
+
+th, td {
+  padding: 14px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+th {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: rgba(0,0,0,0.2);
+}
+
+tr[data-go] { cursor: pointer; transition: background var(--transition); }
+tr:hover td { background: var(--card-hover); }
+tr:last-child td { border-bottom: 0; }
+
+/* Badges */
+.b {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  border-radius: 99px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: #27272a;
+  white-space: nowrap;
+}
+
+.b.ok { color: var(--ok); background: var(--ok-bg); }
+.b.warn { color: var(--warn); background: var(--warn-bg); }
+.b.bad { color: var(--bad); background: var(--bad-bg); }
+.b.info { color: var(--info); background: var(--info-bg); }
+
+.b::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Buttons */
+.btn {
+  background: var(--p);
+  color: #fff;
+  border: 0;
+  border-radius: 10px;
+  padding: 11px 20px;
+  font: 500 14px inherit;
+  cursor: pointer;
+  transition: all var(--transition);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn:hover { background: var(--p-hover); transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+
+.btn.s { padding: 7px 14px; font-size: 0.82rem; }
+.btn.o {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg);
+}
+.btn.o:hover { background: var(--card); border-color: var(--border-light); }
+.btn.d { background: var(--bad-bg); color: var(--bad); }
+.btn.d:hover { background: rgba(239,68,68,0.2); }
+
+/* Forms */
+label {
+  display: block;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+  margin: 0 0 7px;
+}
+
+input, textarea, select {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--fg);
+  padding: 12px 14px;
+  font: inherit;
+  margin-bottom: 18px;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--p);
+  box-shadow: 0 0 0 3px rgba(20,184,166,0.15);
+}
+
+html[data-role="staff"] input:focus,
+html[data-role="staff"] textarea:focus,
+html[data-role="staff"] select:focus {
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+}
+
+html[data-role="admin"] input:focus,
+html[data-role="admin"] textarea:focus,
+html[data-role="admin"] select:focus {
+  box-shadow: 0 0 0 3px rgba(249,115,22,0.15);
+}
+
+textarea { min-height: 120px; resize: vertical; }
+
+.bar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.bar input { margin: 0; flex: 1; min-width: 180px; }
+.bar select { margin: 0; width: 160px; }
+
+/* Messages & Banners */
+.msg {
+  margin-top: 12px;
+  font-size: 0.9rem;
+  color: var(--ok);
+  animation: fadeIn 0.25s ease;
+}
+
+.msg.e { color: var(--bad); }
+
+.banner {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: var(--warn-bg);
+  border: 1px solid rgba(245,158,11,0.3);
+  color: #fbbf24;
+  border-radius: var(--r);
+  padding: 16px 18px;
+  font-size: 0.9rem;
+  margin-bottom: 22px;
+  animation: fadeIn 0.3s ease;
+}
+
+.banner.ok {
+  background: var(--ok-bg);
+  border-color: rgba(34,197,94,0.3);
+  color: var(--ok);
+}
+
+.banner-icon { font-size: 1.2rem; flex-shrink: 0; }
+
+/* Meta & Timeline */
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 10px 0 22px;
+  align-items: center;
+}
+
+.tl {
+  display: flex;
+  margin: 8px 0 28px;
+  position: relative;
+}
+
+.tl div {
+  flex: 1;
+  font-size: 0.78rem;
+  color: var(--muted-2);
+  text-align: center;
+  position: relative;
+  padding-top: 28px;
+  font-weight: 500;
+  transition: color var(--transition);
+}
+
+.tl div::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  border-radius: 50%;
+  background: var(--border);
+  border: 2px solid var(--bg);
+  z-index: 1;
+  transition: all var(--transition);
+}
+
+.tl div::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: -50%;
+  width: 100%;
+  height: 2px;
+  background: var(--border);
+  z-index: 0;
+}
+
+.tl div:first-child::after { display: none; }
+
+.tl div.on { color: var(--fg); }
+.tl div.on::before {
+  background: var(--p);
+  box-shadow: 0 0 0 4px rgba(20,184,166,0.2);
+}
+.tl div.on::after { background: var(--p); }
+
+/* Answers */
+.ans {
+  border-left: 3px solid var(--p);
+  padding: 4px 0 4px 18px;
+  margin-bottom: 18px;
+  animation: fadeIn 0.3s ease;
+}
+
+.ans small {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.ans p {
+  margin-top: 6px;
+  line-height: 1.6;
+  color: #e4e4e7;
+}
+
+/* Back button */
+.back {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font: 500 14px inherit;
+  margin-bottom: 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  transition: color var(--transition);
+}
+
+.back:hover { color: #fff; }
+
+.row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.chk {
+  width: auto;
+  margin: 0;
+  accent-color: var(--p);
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+/* Privacy banner */
+.priv {
+  display: flex;
+  gap: 14px;
+  background: var(--warn-bg);
+  border: 1px solid rgba(245,158,11,0.25);
+  border-radius: var(--r);
+  padding: 16px 20px;
+  font-size: 0.88rem;
+  color: #fbbf24;
+  margin-top: 32px;
+}
+
+.priv b { color: #fcd34d; }
+
+/* Empty state */
+.empty {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--muted);
+}
+
+.empty-icon {
+  font-size: 2.5rem;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 20px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  box-shadow: var(--shadow);
+  z-index: 1000;
+  animation: slideUp 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 340px;
+}
+
+.toast.ok { border-color: rgba(34,197,94,0.4); }
+.toast.err { border-color: rgba(239,68,68,0.4); }
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Mobile card view for tables */
+.mobile-cards { display: none; }
+
+.m-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.m-card:hover { border-color: var(--border-light); background: var(--card-hover); }
+
+.m-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.m-card-id { font-size: 0.78rem; color: var(--muted); font-weight: 500; }
+.m-card-sub { font-weight: 600; font-size: 0.95rem; margin-bottom: 8px; }
+.m-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* Focus */
+:focus-visible {
+  outline: 2px solid var(--p);
+  outline-offset: 2px;
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .app { flex-direction: column; }
+  
+  .side {
+    width: 100%;
+    height: auto;
+    position: relative;
+    flex-direction: row;
+    flex-wrap: wrap;
+    overflow-x: auto;
+    padding: 12px 14px;
+    align-items: center;
+    gap: 6px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  
+  .logo { display: none; }
+  .tag { display: none; }
+  
+  .roles {
+    margin: 0 8px 0 0;
+    flex-shrink: 0;
+    order: -1;
+  }
+  
+  .nav {
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 9px 14px;
+    font-size: 13px;
+  }
+  
+  .main { padding: 24px 18px; }
+  
+  .bar { flex-direction: column; }
+  .bar select { width: 100%; }
+  
+  .stats { grid-template-columns: 1fr 1fr; gap: 12px; }
+  
+  /* Hide desktop table, show mobile cards */
+  .wrap table { display: none; }
+  .mobile-cards { display: block; }
+  
+  h1 { font-size: 1.45rem; }
+  
+  .toast {
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    max-width: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats { grid-template-columns: 1fr; }
+}
 </style>
 </head>
 <body>
-<div class="app"><aside class="side" id="side"></aside>
-<main class="main"><div id="c"></div><div class="priv"><span aria-hidden="true">&#128274;</span><div><b>Privacy rule: no chat, no member directory.</b><br>Everyone sees only their own records or assigned work.</div></div></main></div>
+<div class="app">
+  <aside class="side" id="side"></aside>
+  <main class="main">
+    <div id="c"></div>
+    <div class="priv">
+      <span aria-hidden="true">🔒</span>
+      <div>
+        <b>Privacy rule: no chat, no member directory.</b><br>
+        Everyone sees only their own records or assigned work.
+      </div>
+    </div>
+  </main>
+</div>
+
 <script>
-var me='M-1077',role='member',idx=0,rid=null,flash='';
-var S={next:105,
-mem:[{id:'M-1042',n:'Dr. Ahmed Clinic',st:'Verified'},{id:'M-1077',n:'Dr. Sara Khan',st:'Pending'},{id:'M-1090',n:'City Health Group',st:'Pending'},{id:'M-1103',n:'Noor Medical Center',st:'Verified'}],
-perm:{'Assigned requests':1,'Answer requests':1,'Close tickets':1,'View members':0},
-reqs:[
-{id:'R-101',m:'M-1077',cat:'Claim denial',pri:'High',sub:'Why was CPT 99214 denied?',body:'Claim for a 99214 visit was denied by the payer with code CO-97. The visit note supports the level of service. What should we check before appealing?',date:'Oct 2',st:'Answered',as:'S-01',ans:[{by:'S-01',t:'Oct 3',txt:'CO-97 means the service is bundled with another one billed the same day. Check whether a procedure code was billed alongside 99214 without modifier 25. If it was, resubmit with modifier 25 and attach the visit note.'}]},
-{id:'R-102',m:'M-1077',cat:'Coding',pri:'Normal',sub:'When should modifier 25 be used?',body:'We bill an E/M visit and a minor procedure on the same day. When is modifier 25 appropriate?',date:'Oct 5',st:'In review',as:'S-02',ans:[]},
-{id:'R-103',m:'M-1042',cat:'Billing',pri:'Normal',sub:'Patient balance after partial payment',body:'How should a remaining patient balance be handled after the payer paid only part of the claim?',date:'Oct 6',st:'Open',as:'',ans:[]},
-{id:'R-104',m:'M-1090',cat:'Credentialing',pri:'Low',sub:'Payer enrollment timeline',body:'How long does payer enrollment usually take for a new group?',date:'Oct 8',st:'Open',as:'',ans:[]}],
-ver:[{m:'M-1077',docs:'License, ID',date:'Oct 4'},{m:'M-1090',docs:'License, ID, NPI letter',date:'Oct 7'}]};
-var STAFF=['S-01','S-02'],STS=['Open','In review','Answered','Closed'],CL={Open:'warn','In review':'info',Answered:'ok',Closed:'',Verified:'ok',Pending:'warn',Rejected:'bad',High:'bad',Normal:'',Low:''};
-function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
-function bd(v){return '<span class="b '+(CL[v]||'')+'">'+esc(v)+'</span>'}
-function cell(v){if(v.charAt(0)==='!')return v.slice(1);var p=v.split('|');return p[1]?'<span class="b '+p[1]+'">'+esc(p[0])+'</span>':esc(p[0])}
-function tbl(cols,rows,attr){return '<div class="card wrap"><table><tr>'+cols.map(function(c){return '<th>'+c+'</th>'}).join('')+'</tr>'+rows.join('')+'</table></div>'}
-function G(cols,rows){return tbl(cols,rows.map(function(r){return '<tr>'+r.map(function(v){return '<td>'+cell(v)+'</td>'}).join('')+'</tr>'}))}
-function stat(l,v){return '<div class="card stat"><div class="l">'+l+'</div><div class="v">'+v+'</div></div>'}
-function mname(id){var m=S.mem.filter(function(x){return x.id===id})[0];return m?m.n:id}
-function rtable(list,showM){
- var cols=['ID','Subject'].concat(showM?['Member']:[],['Category','Asked','Status']);
- if(!list.length)return '<div class="card">Nothing here yet.</div>';
- return '<div class="bar"><input data-q placeholder="Search requests" aria-label="Search"><select data-sf aria-label="Status"><option value="">All statuses</option>'+STS.map(function(s){return '<option>'+s+'</option>'}).join('')+'</select></div>'+
- tbl(cols,list.map(function(r){return '<tr data-go="'+r.id+'" data-s="'+r.st+'"><td>'+r.id+'</td><td>'+esc(r.sub)+'</td>'+(showM?'<td>'+esc(mname(r.m))+'</td>':'')+'<td>'+esc(r.cat)+'</td><td>'+r.date+'</td><td>'+bd(r.st)+'</td></tr>'}))}
-function form(fields,btn,act){return '<div class="card" style="max-width:600px">'+fields.map(function(f,i){var id='f'+i,t=f[1];return '<label for="'+id+'">'+f[0]+'</label>'+(t==='area'?'<textarea id="'+id+'"></textarea>':Array.isArray(t)?'<select id="'+id+'">'+t.map(function(o){return '<option>'+o+'</option>'}).join('')+'</select>':'<input id="'+id+'" type="'+t+'">')}).join('')+'<button class="btn" data-act="'+act+'">'+btn+'</button><div class="msg" id="msg" role="status"></div></div>'}
-function mine(){return S.reqs.filter(function(r){return r.m===me})}
-function hd(t,s){return '<h1>'+t+'</h1><p class="sub">'+s+'</p>'}
-function detail(id){
- var r=S.reqs.filter(function(x){return x.id===id})[0];
- if(!r||(role==='member'&&r.m!==me))return '<button class="back" data-back>&larr; Back</button><div class="card">You can only open your own requests.</div>';
- var tl=[['Submitted',1],['Assigned',r.as],['Answered',r.ans.length],['Closed',r.st==='Closed']];
- var h='<button class="back" data-back>&larr; Back</button>'+hd(esc(r.sub),r.id+' &middot; '+r.cat)+
- '<div class="meta">'+bd(r.st)+'<span>Priority: '+r.pri+'</span><span>Asked '+r.date+'</span>'+(role!=='member'?'<span>From: '+esc(mname(r.m))+' ('+r.m+')</span>':'')+'<span>Assigned to: '+(r.as||'not yet')+'</span></div>'+
- '<div class="tl">'+tl.map(function(s){return '<div class="'+(s[1]?'on':'')+'">'+s[0]+'</div>'}).join('')+'</div>'+
- '<div class="card"><h2>Question</h2><p style="line-height:1.55">'+esc(r.body)+'</p></div><div class="card"><h2>Answers</h2>'+
- (r.ans.length?r.ans.map(function(a){return '<div class="ans"><small>'+a.by+' &middot; '+a.t+'</small><p>'+esc(a.txt)+'</p></div>'}).join(''):'<p style="color:var(--muted)">No answer yet. It will appear here as soon as staff replies.</p>')+'</div>';
- if(role==='admin')h+='<div class="card" style="max-width:360px"><label for="as">Assign to</label><select id="as" data-assign="'+r.id+'"><option value="">Unassigned</option>'+STAFF.map(function(s){return '<option'+(r.as===s?' selected':'')+'>'+s+'</option>'}).join('')+'</select></div>';
- var canA=role==='admin'||(role==='staff'&&S.perm['Answer requests']),canC=role==='admin'||(role==='staff'&&S.perm['Close tickets']);
- if(canA&&r.st!=='Closed')h+='<div class="card"><h2>Write answer</h2><textarea id="rp" aria-label="Answer"></textarea><div class="row"><button class="btn" data-act="reply" data-id="'+r.id+'">Post answer</button>'+(canC&&r.ans.length?'<button class="btn o" data-act="close" data-id="'+r.id+'">Close ticket</button>':'')+'</div><div class="msg e" id="msg"></div></div>';
- return h}
-var R={
-member:{tag:'Dr. Sara Khan &middot; provider',secs:[
-['My questions',function(){var m=mine(),o=m.filter(function(r){return r.st==='Open'||r.st==='In review'}).length;
- return hd('My questions','Everything you have asked and the answers you received.')+(S.mem[1].st==='Pending'?'<div class="banner">Your account is waiting for verification. You can still ask questions.</div>':'')+'<div class="stats">'+stat('Waiting for answer',o)+stat('Answered',m.filter(function(r){return r.st==='Answered'}).length)+stat('Closed',m.filter(function(r){return r.st==='Closed'}).length)+'</div>'+rtable(m,0)}],
-['New request',function(){return hd('New request','Tell us what you need. Staff will answer here.')+form([['Category',['Claim denial','Coding','Billing','Credentialing','Other']],['Priority',['Normal','High','Low']],['Subject','text'],['Details','area']],'Send request','new')}],
-['Hire requests',function(){return hd('Hire requests','Ask us to find a coder or biller for your practice.')+G(['Role','Posted','Status'],[['Medical coder','Sep 28','Open|warn'],['Billing specialist','Sep 12','Filled|ok']])}],
-['Resources',function(){return hd('Resources','Guides and templates for providers.')+G(['Title','Type'],[['Denial management basics','Guide'],['Coding update checklist','Checklist'],['Payer contact sheet','Template']])}],
-['Verification status',function(){var st=S.mem[1].st;return hd('Verification status','Where your account stands.')+'<div class="banner'+(st==='Verified'?' ok':'')+'">'+(st==='Verified'?'You are verified.':st==='Rejected'?'Verification was rejected. Contact support.':'Staff are reviewing your documents.')+'</div>'+G(['Step','Status'],[['Email confirmed','Done|ok'],['Documents submitted','Done|ok'],['Staff review',st+'|'+CL[st]]])}],
-['Account settings',function(){return hd('Account settings','Update your profile and password.')+form([['Full name','text'],['Email','text'],['New password','password']],'Save changes','save')}]]},
-staff:{tag:'S-01 &middot; official staff',secs:[
-['Assigned requests',function(){return hd('Assigned requests','Requests assigned to you. Open one to answer it.')+rtable(S.reqs.filter(function(r){return r.as==='S-01'}),1)}],
-['Allowed sections only',function(){return hd('Allowed sections only','What your role can do. Super admin controls this.')+G(['Section','Access'],Object.keys(S.perm).map(function(k){return [k,S.perm[k]?'Allowed|ok':'Blocked|bad']}))}]]},
-admin:{tag:'Only you',secs:[
-['Overview',function(){var pv=S.ver.filter(function(v){return S.mem.filter(function(m){return m.id===v.m})[0].st==='Pending'}).length,un=S.reqs.filter(function(r){return!r.as});
- return hd('Overview','What needs your attention today.')+'<div class="stats">'+stat('Members',S.mem.length)+stat('Unassigned requests',un.length)+stat('Pending verification',pv)+stat('Answered',S.reqs.filter(function(r){return r.st==='Answered'}).length)+'</div><h2>Needs assignment</h2>'+rtable(un,1)}],
-['Requests',function(){return hd('Requests','All requests. Open one to assign, answer or close.')+rtable(S.reqs,1)}],
-['Members',function(){return hd('Members','Provider accounts.')+G(['ID','Name','Status'],S.mem.map(function(m){return [m.id,m.n,m.st+'|'+CL[m.st]]}))}],
-['Verification',function(){return hd('Verification','Review documents, then approve or reject.')+G(['Member','Documents','Submitted','Decision'],S.ver.map(function(v,i){var m=S.mem.filter(function(x){return x.id===v.m})[0];return [m.n,v.docs,v.date,m.st==='Pending'?'!<button class="btn s" data-act="ap" data-i="'+i+'">Approve</button> <button class="btn s d" data-act="rj" data-i="'+i+'">Reject</button>':m.st+'|'+CL[m.st]]}))}],
-['Specialties',function(){return hd('Specialties','Areas of expertise we offer.')+G(['Specialty','Professionals'],[['Medical coding','6'],['Billing','5'],['Denial management','3']])}],
-['Professionals',function(){return hd('Professionals','Coders and billers.')+G(['ID','Specialty','Status'],[['P-201','Medical coding','Active|ok'],['P-208','Billing','Active|ok']])}],
-['Roles and permissions',function(){return hd('Roles and permissions','Choose what the Staff role can do.')+G(['Permission','Staff can'],Object.keys(S.perm).map(function(k){return [k,'!<input class="chk" type="checkbox" aria-label="'+k+'" data-perm="'+k+'"'+(S.perm[k]?' checked':'')+'>']}))}],
-['Privacy',function(){return hd('Privacy','Rules applied to every role.')+G(['Rule','State'],[['Chat between users','Off|ok'],['Member directory for members','Off|ok'],['Members see own records only','On|ok']])}],
-['Security',function(){return hd('Security','Login and access safety.')+G(['Setting','State'],[['Two-step login','On|ok'],['Session timeout','30 min'],['Lock after failed logins','On|ok']])}],
-['Settings',function(){return hd('Settings','Platform settings.')+form([['Platform name','text'],['Support email','text']],'Save changes','save')}]]}};
-function render(){
- var r=R[role];document.documentElement.setAttribute('data-role',role);
- var h='<div class="logo">Alaric</div><div class="roles" role="group" aria-label="Preview role">'+Object.keys(R).map(function(k){return '<button data-role="'+k+'" class="'+(k===role?'on':'')+'">'+k.charAt(0).toUpperCase()+k.slice(1)+'</button>'}).join('')+'</div><div class="tag">'+r.tag+'</div>';
- r.secs.forEach(function(x,i){h+='<button class="nav'+(i===idx&&!rid?' on':'')+'" data-i="'+i+'">'+x[0]+'</button>'});
- document.getElementById('side').innerHTML=h;
- document.getElementById('c').innerHTML=rid?detail(rid):r.secs[idx][1]();
+/* ===================== STATE ===================== */
+var me = 'M-1077';
+var role = 'member';
+var idx = 0;
+var rid = null;
+
+var S = {
+  next: 105,
+  mem: [
+    { id: 'M-1042', n: 'Dr. Ahmed Clinic', st: 'Verified' },
+    { id: 'M-1077', n: 'Dr. Sara Khan', st: 'Pending' },
+    { id: 'M-1090', n: 'City Health Group', st: 'Pending' },
+    { id: 'M-1103', n: 'Noor Medical Center', st: 'Verified' }
+  ],
+  perm: {
+    'Assigned requests': 1,
+    'Answer requests': 1,
+    'Close tickets': 1,
+    'View members': 0
+  },
+  reqs: [
+    {
+      id: 'R-101', m: 'M-1077', cat: 'Claim denial', pri: 'High',
+      sub: 'Why was CPT 99214 denied?',
+      body: 'Claim for a 99214 visit was denied by the payer with code CO-97. The visit note supports the level of service. What should we check before appealing?',
+      date: 'Oct 2', st: 'Answered', as: 'S-01',
+      ans: [{ by: 'S-01', t: 'Oct 3', txt: 'CO-97 means the service is bundled with another one billed the same day. Check whether a procedure code was billed alongside 99214 without modifier 25. If it was, resubmit with modifier 25 and attach the visit note.' }]
+    },
+    {
+      id: 'R-102', m: 'M-1077', cat: 'Coding', pri: 'Normal',
+      sub: 'When should modifier 25 be used?',
+      body: 'We bill an E/M visit and a minor procedure on the same day. When is modifier 25 appropriate?',
+      date: 'Oct 5', st: 'In review', as: 'S-02', ans: []
+    },
+    {
+      id: 'R-103', m: 'M-1042', cat: 'Billing', pri: 'Normal',
+      sub: 'Patient balance after partial payment',
+      body: 'How should a remaining patient balance be handled after the payer paid only part of the claim?',
+      date: 'Oct 6', st: 'Open', as: '', ans: []
+    },
+    {
+      id: 'R-104', m: 'M-1090', cat: 'Credentialing', pri: 'Low',
+      sub: 'Payer enrollment timeline',
+      body: 'How long does payer enrollment usually take for a new group?',
+      date: 'Oct 8', st: 'Open', as: '', ans: []
+    }
+  ],
+  ver: [
+    { m: 'M-1077', docs: 'License, ID', date: 'Oct 4' },
+    { m: 'M-1090', docs: 'License, ID, NPI letter', date: 'Oct 7' }
+  ]
+};
+
+var STAFF = ['S-01', 'S-02'];
+var STS = ['Open', 'In review', 'Answered', 'Closed'];
+var CL = {
+  Open: 'warn', 'In review': 'info', Answered: 'ok', Closed: '',
+  Verified: 'ok', Pending: 'warn', Rejected: 'bad',
+  High: 'bad', Normal: '', Low: ''
+};
+
+/* ===================== HELPERS ===================== */
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, function(c) {
+    return { '&': '&', '<': '<', '>': '>', '"': '"' }[c];
+  });
 }
-function msg(t,e){var m=document.getElementById('msg');if(m){m.textContent=t;m.className='msg'+(e?' e':'')}}
-function val(id){var e=document.getElementById(id);return e?e.value.trim():''}
-function getR(id){return S.reqs.filter(function(x){return x.id===id})[0]}
-document.addEventListener('click',function(e){
- var t=e.target.closest('button,[data-go]');if(!t)return;var d=t.dataset;
- if(d.role){role=d.role;idx=0;rid=null;render()}
- else if(d.i&&!d.act){idx=+d.i;rid=null;render()}
- else if(d.go){rid=d.go;render()}
- else if(d.back!==undefined){rid=null;render()}
- else if(d.act==='new'){var s=val('f2'),b=val('f3');if(!s||!b){msg('Add a subject and details.',1);return}
-  var id='R-'+(S.next++);S.reqs.unshift({id:id,m:me,cat:val('f0'),pri:val('f1'),sub:s,body:b,date:'Oct 10',st:'Open',as:'',ans:[]});rid=id;render()}
- else if(d.act==='reply'){var x=val('rp');if(!x){msg('Write an answer first.',1);return}
-  var q=getR(d.id);q.ans.push({by:role==='admin'?'Admin':'S-01',t:'Oct 10',txt:x});q.st='Answered';if(!q.as)q.as='S-01';render()}
- else if(d.act==='close'){getR(d.id).st='Closed';render()}
- else if(d.act==='ap'||d.act==='rj'){S.mem.filter(function(m){return m.id===S.ver[+d.i].m})[0].st=d.act==='ap'?'Verified':'Rejected';render()}
- else if(d.act==='save'){msg('Saved')}
+
+function bd(v) {
+  return '<span class="b ' + (CL[v] || '') + '">' + esc(v) + '</span>';
+}
+
+function cell(v) {
+  if (v.charAt(0) === '!') return v.slice(1);
+  var p = v.split('|');
+  return p[1] ? '<span class="b ' + p[1] + '">' + esc(p[0]) + '</span>' : esc(p[0]);
+}
+
+function tbl(cols, rows) {
+  return '<div class="card wrap"><table><thead><tr>' +
+    cols.map(function(c) { return '<th>' + c + '</th>'; }).join('') +
+    '</tr></thead><tbody>' + rows.join('') + '</tbody></table></div>';
+}
+
+function G(cols, rows) {
+  return tbl(cols, rows.map(function(r) {
+    return '<tr>' + r.map(function(v) { return '<td>' + cell(v) + '</td>'; }).join('') + '</tr>';
+  }));
+}
+
+function stat(l, v, delta) {
+  return '<div class="card stat"><div class="l">' + l + '</div><div class="v">' + v + '</div>' +
+    (delta ? '<div class="delta">' + delta + '</div>' : '') + '</div>';
+}
+
+function mname(id) {
+  var m = S.mem.filter(function(x) { return x.id === id; })[0];
+  return m ? m.n : id;
+}
+
+function mine() {
+  return S.reqs.filter(function(r) { return r.m === me; });
+}
+
+function hd(t, s) {
+  return '<h1>' + t + '</h1><p class="sub">' + s + '</p>';
+}
+
+function toast(msg, type) {
+  var existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+  var el = document.createElement('div');
+  el.className = 'toast ' + (type || 'ok');
+  el.innerHTML = (type === 'err' ? '✕ ' : '✓ ') + esc(msg);
+  document.body.appendChild(el);
+  setTimeout(function() { el.remove(); }, 2800);
+}
+
+/* ===================== REQUEST TABLE + MOBILE CARDS ===================== */
+function rtable(list, showM) {
+  if (!list.length) {
+    return '<div class="card empty"><div class="empty-icon">📋</div><div>Nothing here yet.</div></div>';
+  }
+
+  var cols = ['ID', 'Subject'].concat(showM ? ['Member'] : [], ['Category', 'Asked', 'Status']);
+
+  var rows = list.map(function(r) {
+    return '<tr data-go="' + r.id + '" data-s="' + r.st + '">' +
+      '<td>' + r.id + '</td>' +
+      '<td>' + esc(r.sub) + '</td>' +
+      (showM ? '<td>' + esc(mname(r.m)) + '</td>' : '') +
+      '<td>' + esc(r.cat) + '</td>' +
+      '<td>' + r.date + '</td>' +
+      '<td>' + bd(r.st) + '</td></tr>';
+  });
+
+  var cards = list.map(function(r) {
+    return '<div class="m-card" data-go="' + r.id + '" data-s="' + r.st + '">' +
+      '<div class="m-card-top"><span class="m-card-id">' + r.id + '</span>' + bd(r.st) + '</div>' +
+      '<div class="m-card-sub">' + esc(r.sub) + '</div>' +
+      '<div class="m-card-meta">' +
+        '<span>' + esc(r.cat) + '</span>' +
+        '<span>' + r.date + '</span>' +
+        (showM ? '<span>' + esc(mname(r.m)) + '</span>' : '') +
+      '</div></div>';
+  }).join('');
+
+  return '<div class="bar">' +
+    '<input data-q placeholder="Search requests..." aria-label="Search">' +
+    '<select data-sf aria-label="Status filter"><option value="">All statuses</option>' +
+    STS.map(function(s) { return '<option>' + s + '</option>'; }).join('') +
+    '</select></div>' +
+    tbl(cols, rows) +
+    '<div class="mobile-cards">' + cards + '</div>';
+}
+
+function form(fields, btn, act) {
+  return '<div class="card" style="max-width:580px">' +
+    fields.map(function(f, i) {
+      var id = 'f' + i, t = f[1];
+      return '<label for="' + id + '">' + f[0] + '</label>' +
+        (t === 'area' ? '<textarea id="' + id + '"></textarea>' :
+         Array.isArray(t) ? '<select id="' + id + '">' + t.map(function(o) { return '<option>' + o + '</option>'; }).join('') + '</select>' :
+         '<input id="' + id + '" type="' + t + '">');
+    }).join('') +
+    '<button class="btn" data-act="' + act + '">' + btn + '</button>' +
+    '<div class="msg" id="msg" role="status"></div></div>';
+}
+
+/* ===================== DETAIL VIEW ===================== */
+function detail(id) {
+  var r = S.reqs.filter(function(x) { return x.id === id; })[0];
+  if (!r || (role === 'member' && r.m !== me)) {
+    return '<button class="back" data-back>← Back</button><div class="card">You can only open your own requests.</div>';
+  }
+
+  var tl = [
+    ['Submitted', 1],
+    ['Assigned', r.as],
+    ['Answered', r.ans.length],
+    ['Closed', r.st === 'Closed']
+  ];
+
+  var h = '<button class="back" data-back>← Back</button>' +
+    hd(esc(r.sub), r.id + ' · ' + r.cat) +
+    '<div class="meta">' +
+      bd(r.st) +
+      '<span>Priority: ' + r.pri + '</span>' +
+      '<span>Asked ' + r.date + '</span>' +
+      (role !== 'member' ? '<span>From: ' + esc(mname(r.m)) + ' (' + r.m + ')</span>' : '') +
+      '<span>Assigned to: ' + (r.as || 'not yet') + '</span>' +
+    '</div>' +
+    '<div class="tl">' + tl.map(function(s) {
+      return '<div class="' + (s[1] ? 'on' : '') + '">' + s[0] + '</div>';
+    }).join('') + '</div>' +
+    '<div class="card"><h2>Question</h2><p style="line-height:1.65;color:#e4e4e7">' + esc(r.body) + '</p></div>' +
+    '<div class="card"><h2>Answers</h2>' +
+    (r.ans.length
+      ? r.ans.map(function(a) {
+          return '<div class="ans"><small>' + a.by + ' · ' + a.t + '</small><p>' + esc(a.txt) + '</p></div>';
+        }).join('')
+      : '<p style="color:var(--muted)">No answer yet. It will appear here as soon as staff replies.</p>') +
+    '</div>';
+
+  if (role === 'admin') {
+    h += '<div class="card" style="max-width:360px">' +
+      '<label for="as">Assign to</label>' +
+      '<select id="as" data-assign="' + r.id + '">' +
+      '<option value="">Unassigned</option>' +
+      STAFF.map(function(s) {
+        return '<option' + (r.as === s ? ' selected' : '') + '>' + s + '</option>';
+      }).join('') +
+      '</select></div>';
+  }
+
+  var canA = role === 'admin' || (role === 'staff' && S.perm['Answer requests']);
+  var canC = role === 'admin' || (role === 'staff' && S.perm['Close tickets']);
+
+  if (canA && r.st !== 'Closed') {
+    h += '<div class="card"><h2>Write answer</h2>' +
+      '<textarea id="rp" aria-label="Answer" placeholder="Type your response..."></textarea>' +
+      '<div class="row">' +
+      '<button class="btn" data-act="reply" data-id="' + r.id + '">Post answer</button>' +
+      (canC && r.ans.length ? '<button class="btn o" data-act="close" data-id="' + r.id + '">Close ticket</button>' : '') +
+      '</div><div class="msg e" id="msg"></div></div>';
+  }
+
+  return h;
+}
+
+/* ===================== ROLE SECTIONS ===================== */
+var R = {
+  member: {
+    tag: 'Dr. Sara Khan · provider',
+    secs: [
+      ['My questions', function() {
+        var m = mine();
+        var o = m.filter(function(r) { return r.st === 'Open' || r.st === 'In review'; }).length;
+        return hd('My questions', 'Everything you have asked and the answers you received.') +
+          (S.mem[1].st === 'Pending'
+            ? '<div class="banner"><span class="banner-icon">⏳</span><div>Your account is waiting for verification. You can still ask questions.</div></div>'
+            : '') +
+          '<div class="stats">' +
+            stat('Waiting for answer', o, o ? 'Action needed' : 'All clear') +
+            stat('Answered', m.filter(function(r) { return r.st === 'Answered'; }).length) +
+            stat('Closed', m.filter(function(r) { return r.st === 'Closed'; }).length) +
+          '</div>' + rtable(m, 0);
+      }],
+      ['New request', function() {
+        return hd('New request', 'Tell us what you need. Staff will answer here.') +
+          form([
+            ['Category', ['Claim denial', 'Coding', 'Billing', 'Credentialing', 'Other']],
+            ['Priority', ['Normal', 'High', 'Low']],
+            ['Subject', 'text'],
+            ['Details', 'area']
+          ], 'Send request', 'new');
+      }],
+      ['Hire requests', function() {
+        return hd('Hire requests', 'Ask us to find a coder or biller for your practice.') +
+          G(['Role', 'Posted', 'Status'], [
+            ['Medical coder', 'Sep 28', 'Open|warn'],
+            ['Billing specialist', 'Sep 12', 'Filled|ok']
+          ]);
+      }],
+      ['Resources', function() {
+        return hd('Resources', 'Guides and templates for providers.') +
+          G(['Title', 'Type'], [
+            ['Denial management basics', 'Guide'],
+            ['Coding update checklist', 'Checklist'],
+            ['Payer contact sheet', 'Template']
+          ]);
+      }],
+      ['Verification status', function() {
+        var st = S.mem[1].st;
+        return hd('Verification status', 'Where your account stands.') +
+          '<div class="banner' + (st === 'Verified' ? ' ok' : '') + '">' +
+            '<span class="banner-icon">' + (st === 'Verified' ? '✓' : '⏳') + '</span>' +
+            '<div>' + (st === 'Verified' ? 'You are verified.' :
+              st === 'Rejected' ? 'Verification was rejected. Contact support.' :
+              'Staff are reviewing your documents.') + '</div></div>' +
+          G(['Step', 'Status'], [
+            ['Email confirmed', 'Done|ok'],
+            ['Documents submitted', 'Done|ok'],
+            ['Staff review', st + '|' + CL[st]]
+          ]);
+      }],
+      ['Account settings', function() {
+        return hd('Account settings', 'Update your profile and password.') +
+          form([
+            ['Full name', 'text'],
+            ['Email', 'text'],
+            ['New password', 'password']
+          ], 'Save changes', 'save');
+      }]
+    ]
+  },
+
+  staff: {
+    tag: 'S-01 · official staff',
+    secs: [
+      ['Assigned requests', function() {
+        var list = S.reqs.filter(function(r) { return r.as === 'S-01'; });
+        return hd('Assigned requests', 'Requests assigned to you. Open one to answer it.') +
+          '<div class="stats">' +
+            stat('Assigned to you', list.length) +
+            stat('Waiting reply', list.filter(function(r) { return !r.ans.length; }).length) +
+          '</div>' +
+          rtable(list, 1);
+      }],
+      ['Allowed sections only', function() {
+        return hd('Allowed sections only', 'What your role can do. Super admin controls this.') +
+          G(['Section', 'Access'], Object.keys(S.perm).map(function(k) {
+            return [k, S.perm[k] ? 'Allowed|ok' : 'Blocked|bad'];
+          }));
+      }]
+    ]
+  },
+
+  admin: {
+    tag: 'Only you',
+    secs: [
+      ['Overview', function() {
+        var pv = S.ver.filter(function(v) {
+          return S.mem.filter(function(m) { return m.id === v.m; })[0].st === 'Pending';
+        }).length;
+        var un = S.reqs.filter(function(r) { return !r.as; });
+        return hd('Overview', 'What needs your attention today.') +
+          '<div class="stats">' +
+            stat('Members', S.mem.length) +
+            stat('Unassigned', un.length, un.length ? 'Needs action' : 'All assigned') +
+            stat('Pending verification', pv) +
+            stat('Answered', S.reqs.filter(function(r) { return r.st === 'Answered'; }).length) +
+          '</div>' +
+          '<h2>Needs assignment</h2>' + rtable(un, 1);
+      }],
+      ['Requests', function() {
+        return hd('Requests', 'All requests. Open one to assign, answer or close.') +
+          rtable(S.reqs, 1);
+      }],
+      ['Members', function() {
+        return hd('Members', 'Provider accounts.') +
+          G(['ID', 'Name', 'Status'], S.mem.map(function(m) {
+            return [m.id, m.n, m.st + '|' + CL[m.st]];
+          }));
+      }],
+      ['Verification', function() {
+        return hd('Verification', 'Review documents, then approve or reject.') +
+          G(['Member', 'Documents', 'Submitted', 'Decision'], S.ver.map(function(v, i) {
+            var m = S.mem.filter(function(x) { return x.id === v.m; })[0];
+            return [
+              m.n, v.docs, v.date,
+              m.st === 'Pending'
+                ? '!<button class="btn s" data-act="ap" data-i="' + i + '">Approve</button> <button class="btn s d" data-act="rj" data-i="' + i + '">Reject</button>'
+                : m.st + '|' + CL[m.st]
+            ];
+          }));
+      }],
+      ['Specialties', function() {
+        return hd('Specialties', 'Areas of expertise we offer.') +
+          G(['Specialty', 'Professionals'], [
+            ['Medical coding', '6'],
+            ['Billing', '5'],
+            ['Denial management', '3']
+          ]);
+      }],
+      ['Professionals', function() {
+        return hd('Professionals', 'Coders and billers.') +
+          G(['ID', 'Specialty', 'Status'], [
+            ['P-201', 'Medical coding', 'Active|ok'],
+            ['P-208', 'Billing', 'Active|ok']
+          ]);
+      }],
+      ['Roles and permissions', function() {
+        return hd('Roles and permissions', 'Choose what the Staff role can do.') +
+          G(['Permission', 'Staff can'], Object.keys(S.perm).map(function(k) {
+            return [k, '!<input class="chk" type="checkbox" aria-label="' + k + '" data-perm="' + k + '"' + (S.perm[k] ? ' checked' : '') + '>'];
+          }));
+      }],
+      ['Privacy', function() {
+        return hd('Privacy', 'Rules applied to every role.') +
+          G(['Rule', 'State'], [
+            ['Chat between users', 'Off|ok'],
+            ['Member directory for members', 'Off|ok'],
+            ['Members see own records only', 'On|ok']
+          ]);
+      }],
+      ['Security', function() {
+        return hd('Security', 'Login and access safety.') +
+          G(['Setting', 'State'], [
+            ['Two-step login', 'On|ok'],
+            ['Session timeout', '30 min'],
+            ['Lock after failed logins', 'On|ok']
+          ]);
+      }],
+      ['Settings', function() {
+        return hd('Settings', 'Platform settings.') +
+          form([
+            ['Platform name', 'text'],
+            ['Support email', 'text']
+          ], 'Save changes', 'save');
+      }]
+    ]
+  }
+};
+
+/* ===================== RENDER ===================== */
+function render() {
+  var r = R[role];
+  document.documentElement.setAttribute('data-role', role);
+
+  var h = '<div class="logo"><div class="logo-icon">A</div>Alaric</div>' +
+    '<div class="roles" role="group" aria-label="Preview role">' +
+    Object.keys(R).map(function(k) {
+      return '<button data-role="' + k + '" class="' + (k === role ? 'on' : '') + '">' +
+        k.charAt(0).toUpperCase() + k.slice(1) + '</button>';
+    }).join('') +
+    '</div><div class="tag">' + r.tag + '</div>';
+
+  r.secs.forEach(function(x, i) {
+    var badge = '';
+    if (role === 'member' && i === 0) {
+      var waiting = mine().filter(function(r) { return r.st === 'Open' || r.st === 'In review'; }).length;
+      if (waiting) badge = '<span class="badge">' + waiting + '</span>';
+    }
+    if (role === 'admin' && i === 0) {
+      var un = S.reqs.filter(function(r) { return !r.as; }).length;
+      if (un) badge = '<span class="badge">' + un + '</span>';
+    }
+    h += '<button class="nav' + (i === idx && !rid ? ' on' : '') + '" data-i="' + i + '">' +
+      x[0] + badge + '</button>';
+  });
+
+  document.getElementById('side').innerHTML = h;
+
+  var content = document.getElementById('c');
+  content.style.animation = 'none';
+  content.offsetHeight; // reflow
+  content.style.animation = '';
+  content.innerHTML = rid ? detail(rid) : r.secs[idx][1]();
+}
+
+/* ===================== EVENTS ===================== */
+function msg(t, e) {
+  var m = document.getElementById('msg');
+  if (m) {
+    m.textContent = t;
+    m.className = 'msg' + (e ? ' e' : '');
+  }
+}
+
+function val(id) {
+  var e = document.getElementById(id);
+  return e ? e.value.trim() : '';
+}
+
+function getR(id) {
+  return S.reqs.filter(function(x) { return x.id === id; })[0];
+}
+
+document.addEventListener('click', function(e) {
+  var t = e.target.closest('button, [data-go], .m-card');
+  if (!t) return;
+  var d = t.dataset;
+
+  if (d.role) {
+    role = d.role;
+    idx = 0;
+    rid = null;
+    render();
+  } else if (d.i !== undefined && !d.act) {
+    idx = +d.i;
+    rid = null;
+    render();
+  } else if (d.go) {
+    rid = d.go;
+    render();
+  } else if (d.back !== undefined) {
+    rid = null;
+    render();
+  } else if (d.act === 'new') {
+    var s = val('f2'), b = val('f3');
+    if (!s || !b) {
+      msg('Add a subject and details.', 1);
+      return;
+    }
+    var id = 'R-' + (S.next++);
+    S.reqs.unshift({
+      id: id, m: me, cat: val('f0'), pri: val('f1'),
+      sub: s, body: b, date: 'Oct 10', st: 'Open', as: '', ans: []
+    });
+    rid = id;
+    render();
+    toast('Request submitted successfully');
+  } else if (d.act === 'reply') {
+    var x = val('rp');
+    if (!x) {
+      msg('Write an answer first.', 1);
+      return;
+    }
+    var q = getR(d.id);
+    q.ans.push({ by: role === 'admin' ? 'Admin' : 'S-01', t: 'Oct 10', txt: x });
+    q.st = 'Answered';
+    if (!q.as) q.as = 'S-01';
+    render();
+    toast('Answer posted');
+  } else if (d.act === 'close') {
+    getR(d.id).st = 'Closed';
+    render();
+    toast('Ticket closed');
+  } else if (d.act === 'ap' || d.act === 'rj') {
+    S.mem.filter(function(m) { return m.id === S.ver[+d.i].m; })[0].st =
+      d.act === 'ap' ? 'Verified' : 'Rejected';
+    render();
+    toast(d.act === 'ap' ? 'Member approved' : 'Member rejected');
+  } else if (d.act === 'save') {
+    msg('Saved');
+    toast('Settings saved');
+  }
 });
-document.addEventListener('change',function(e){var t=e.target,d=t.dataset;
- if(d.assign){var q=getR(d.assign);q.as=t.value;if(t.value&&q.st==='Open')q.st='In review';render()}
- else if(d.perm){S.perm[d.perm]=t.checked?1:0;render()}
- else if(d.sf!==undefined)filt()});
-document.addEventListener('input',function(e){if(e.target.dataset.q!==undefined)filt()});
-function filt(){var q=(document.querySelector('[data-q]').value||'').toLowerCase(),s=document.querySelector('[data-sf]').value;
- document.querySelectorAll('tr[data-s]').forEach(function(r){r.style.display=(!s||r.dataset.s===s)&&r.textContent.toLowerCase().indexOf(q)>-1?'':'none'})}
+
+document.addEventListener('change', function(e) {
+  var t = e.target, d = t.dataset;
+  if (d.assign) {
+    var q = getR(d.assign);
+    q.as = t.value;
+    if (t.value && q.st === 'Open') q.st = 'In review';
+    render();
+    toast(t.value ? 'Assigned to ' + t.value : 'Unassigned');
+  } else if (d.perm) {
+    S.perm[d.perm] = t.checked ? 1 : 0;
+    render();
+  } else if (d.sf !== undefined) {
+    filt();
+  }
+});
+
+document.addEventListener('input', function(e) {
+  if (e.target.dataset.q !== undefined) filt();
+});
+
+function filt() {
+  var qEl = document.querySelector('[data-q]');
+  var sEl = document.querySelector('[data-sf]');
+  if (!qEl) return;
+  var q = (qEl.value || '').toLowerCase();
+  var s = sEl ? sEl.value : '';
+
+  document.querySelectorAll('tr[data-s], .m-card[data-s]').forEach(function(r) {
+    var matchStatus = !s || r.dataset.s === s;
+    var matchText = r.textContent.toLowerCase().indexOf(q) > -1;
+    r.style.display = (matchStatus && matchText) ? '' : 'none';
+  });
+}
+
+/* Init */
 render();
 </script>
 </body>
