@@ -128,13 +128,16 @@ function canSeePost(post){
 }
 function render(){
   var displayName=(currentUser.first+' '+currentUser.last).trim(),letter=(currentUser.first||'?')[0].toUpperCase(),secs=[];
-  if(isAdmin())secs=[['See all',pageSeeAll],['Approvals',pageAdminOverview],['Members',pageAdminMembers],['All Questions',pageFeed],['Member Chat',pageChat],['My Profile',pageProfile]];
-  else{secs=[['Home',pageMemberHome],['Questions',pageFeed],['Ask Question',pageNewPost],['Admin Chat',pageChat],['My Profile',pageProfile]]}
-  var h='<div class="logo"><div class="logo-icon">A</div>Alaric</div>',ph=(getProfile(currentUser.id)||{}).photo,meP=getProfile(currentUser.id)||{role:role,status:status};
+  var groups;
+  if(isAdmin()) groups=[['Control',[['See all',pageSeeAll],['Approvals',pageAdminOverview],['Members',pageAdminMembers]]],['Community',[['All Questions',pageFeed],['Member Chat',pageChat]]],['Account',[['My Profile',pageProfile]]]];
+  else groups=[['Community',[['Home',pageMemberHome],['Questions',pageFeed],['Ask Question',pageNewPost],['Admin Chat',pageChat]]],['Account',[['My Profile',pageProfile]]]];
+  var h='<div class="logo"><div class="logo-icon">A</div><div><div>Alaric</div>'+(isAdmin()?'<div class="logo-kicker">Admin panel</div>':'<div class="logo-kicker">Member</div>')+'</div></div>',ph=(getProfile(currentUser.id)||{}).photo,meP=getProfile(currentUser.id)||{role:role,status:status};
   h+='<div class="user-info"><div class="av">'+(ph?'<img src="'+ph+'" alt="">':letter)+'</div><div><div class="name">'+esc(displayName)+'</div><div style="margin-top:4px">'+roleBadge(meP)+(currentUser.specialty?' <span style="color:var(--muted);font-size:.75rem">'+esc(currentUser.specialty)+'</span>':'')+'</div></div></div>';
-  secs.forEach(function(x,i){h+='<button class="nav'+(i===idx?' on':'')+'" data-i="'+i+'">'+x[0];if((x[0]==='Members'||x[0]==='Approvals')&&isAdmin()){var pend=getProfiles().filter(function(p){return p.status==='pending'}).length;if(pend)h+='<span class="badge">'+pend+'</span>'}h+='</button>'});
+  groups.forEach(function(g){h+='<div class="nav-sec">'+g[0]+'</div>';g[1].forEach(function(x){var i=secs.length;secs.push(x);h+='<button class="nav'+(i===idx?' on':'')+'" data-i="'+i+'">'+x[0];if((x[0]==='Members'||x[0]==='Approvals')&&isAdmin()){var pend=getProfiles().filter(function(p){return p.status==='pending'}).length;if(pend)h+='<span class="badge">'+pend+'</span>'}h+='</button>'});});
   h+='<button class="logout-btn" id="logoutBtn">Logout</button>';
-  document.getElementById('side').innerHTML=h;document.getElementById('c').innerHTML=secs[Math.min(idx,secs.length-1)][1]();
+  var side=document.getElementById('side');side.classList.toggle('is-admin',!!isAdmin());side.innerHTML=h;
+  var top=isAdmin()?'<div class="admin-top"><div><b>Admin panel</b><span>Full access · members, questions, private chats</span></div><span class="pill warn">Admin</span></div>':'';
+  document.getElementById('c').innerHTML=top+secs[Math.min(idx,secs.length-1)][1]();
   document.getElementById('logoutBtn').onclick=async function(){await sb.auth.signOut();currentUser=null;document.getElementById('app').classList.remove('show');document.getElementById('authScreen').style.display='';hideAuthMsg()};
   document.querySelectorAll('.nav[data-i]').forEach(function(btn){btn.onclick=function(){idx=+btn.dataset.i;render()}});bindPageEvents();
 }
