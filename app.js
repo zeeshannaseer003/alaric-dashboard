@@ -123,11 +123,12 @@ function canSeePost(post){
   if(post.user_id===currentUser.id)return true;
   if(post.visibility==='private')return false;
   if(!isApproved())return false;
-  return true;
+  if(post.visibility==='official')return isOfficial();
+  return isMemberAuthor(post);
 }
 function render(){
   var displayName=(currentUser.first+' '+currentUser.last).trim(),letter=(currentUser.first||'?')[0].toUpperCase(),secs=[];
-  if(isAdmin())secs=[['Approvals',pageAdminOverview],['Members',pageAdminMembers],['All Questions',pageFeed],['Member Chat',pageChat],['My Profile',pageProfile]];
+  if(isAdmin())secs=[['See all',pageSeeAll],['Approvals',pageAdminOverview],['Members',pageAdminMembers],['All Questions',pageFeed],['Member Chat',pageChat],['My Profile',pageProfile]];
   else{secs=[['Home',pageMemberHome],['Questions',pageFeed],['Ask Question',pageNewPost],['Admin Chat',pageChat],['My Profile',pageProfile]]}
   var h='<div class="logo"><div class="logo-icon">A</div>Alaric</div>',ph=(getProfile(currentUser.id)||{}).photo,meP=getProfile(currentUser.id)||{role:role,status:status};
   h+='<div class="user-info"><div class="av">'+(ph?'<img src="'+ph+'" alt="">':letter)+'</div><div><div class="name">'+esc(displayName)+'</div><div style="margin-top:4px">'+roleBadge(meP)+(currentUser.specialty?' <span style="color:var(--muted);font-size:.75rem">'+esc(currentUser.specialty)+'</span>':'')+'</div></div></div>';
@@ -158,6 +159,34 @@ function pageAdminOverview(){
 function pageAdminMembers(){var profiles=getProfiles().slice().sort(function(a,b){return String(b.created||'').localeCompare(String(a.created||''))});var html='<h1>Members</h1><p class="sub">Grant Official or Admin. New users = members only.</p>';if(!profiles.length)return html+'<div class="card empty">No members yet</div>';html+='<div class="card"><div class="table-wrap"><table><tr><th>Name</th><th>Email</th><th>Specialty</th><th>Role</th><th>Status</th><th>Actions</th></tr>';profiles.forEach(function(p){var isSuper=isAdminEmail(p.email);html+='<tr><td>'+esc((p.first||'')+' '+(p.last||''))+'</td><td>'+esc(p.email||'—')+'</td><td>'+esc(p.specialty||'—')+'</td><td>'+roleBadge(p)+(isSuper?' <span class="pill ok">Owner</span>':'')+'</td><td><span class="pill '+(p.status==='approved'?'ok':p.status==='rejected'?'bad':'warn')+'">'+esc(p.status||'pending')+'</span></td><td style="white-space:nowrap">';if(isSuper)html+='<span style="color:var(--muted);font-size:.8rem">Main admin</span>';else{if(p.status!=='approved')html+='<button class="btn s ok" data-approve="'+esc(p.id)+'">Approve</button> ';if(p.status!=='rejected')html+='<button class="btn s d" data-reject="'+esc(p.id)+'">Reject</button> ';if(p.role!=='official')html+='<button class="btn s o" data-make-official="'+esc(p.id)+'">Make Official</button> ';if(p.role!=='admin')html+='<button class="btn s" data-make-admin="'+esc(p.id)+'">Make Admin</button> ';if(p.role==='admin'||p.role==='official')html+='<button class="btn s o" data-make-member="'+esc(p.id)+'">Make Member</button>'}html+='</td></tr>'});html+='</table></div></div>';return html}
 function pageFeed(){var q=(window._feedQ||'').toLowerCase();var posts=getPosts().filter(canSeePost).filter(function(p){if(!q)return true;return (p.title||'').toLowerCase().indexOf(q)>-1||(p.body||'').toLowerCase().indexOf(q)>-1});var html='<h1>'+(isAdmin()?'All Questions (admin)':'Member Questions')+'</h1><p class="sub">'+(isAdmin()?'You see every question, including private and official.':'Only questions from members. You can answer them here.')+'</p><div class="bar"><input class="search-bar" id="feedSearch" placeholder="Search..." value="'+esc(window._feedQ||'')+'"><button class="btn s o" id="refreshFeed">Refresh</button></div>';if(!isApproved()&&!isAdmin())html+='<div class="pending-banner">Pending approval.</div>';if(!posts.length)return html+'<div class="card empty">No questions yet.</div>';var likes=getLikes(),comments=getComments();posts.forEach(function(p){var likeCount=likes.filter(function(l){return l.post_id===p.id}).length;var liked=likes.some(function(l){return l.post_id===p.id&&l.user_id===currentUser.id});var pcs=comments.filter(function(c){return c.post_id===p.id});html+='<div class="card"><div class="post-title">'+esc(p.title)+'</div>';var authorP=getProfile(p.user_id)||{};html+='<div class="post-meta"><span>'+esc(publicName(p.user_id))+'</span> '+roleBadge(authorP);var spec=publicSpec(p.user_id);if(spec)html+='<span>'+esc(spec)+'</span>';html+='<span>'+esc(String(p.created||'').slice(0,10))+'</span><span class="pill">'+esc(p.visibility||'members')+'</span></div><div class="post-body">'+esc(p.body)+'</div><div class="post-actions"><button class="btn s o" data-like="'+esc(p.id)+'">'+(liked?'♥':'♡')+' '+likeCount+'</button><span style="color:var(--muted);font-size:.85rem">'+pcs.length+' comments</span>';if(p.user_id===currentUser.id||isAdmin())html+='<button class="btn s d" data-del-post="'+esc(p.id)+'">Delete</button>';html+='</div>';pcs.forEach(function(c){var cp=getProfile(c.user_id)||{};html+='<div class="comment"><div class="who">'+esc(publicName(c.user_id))+' '+roleBadge(cp)+'</div><div>'+esc(c.body)+'</div></div>'});if(isApproved()||isAdmin())html+='<div class="bar" style="margin-top:12px;margin-bottom:0"><input placeholder="Comment..." data-cmt-input="'+esc(p.id)+'"><button class="btn s" data-cmt-send="'+esc(p.id)+'">Comment</button></div>';html+='</div>'});return html}
 function pageNewPost(){if(!isApproved()&&!isAdmin())return '<h1>Ask a Question</h1><div class="pending-banner">Pending approval.</div>';var vis='<div class="vis-row"><label><input type="radio" name="vis" value="members" checked> All members</label>';if(isOfficial()||isAdmin())vis+='<label><input type="radio" name="vis" value="official"> Official only</label>';vis+='<label><input type="radio" name="vis" value="private"> Only me</label></div>';return '<h1>Ask a Question</h1><p class="sub">'+(isAdmin()?'Admin post — members only see questions from members.':'Your question is visible to other members.')+'</p><div class="card"><div class="auth-field"><label>Title</label><input id="npTitle" placeholder="Title"></div><div class="auth-field"><label>Details</label><textarea id="npBody" rows="5"></textarea></div>'+vis+'<button class="btn" id="npSubmit">Post question</button></div>'}
+function pageSeeAll(){
+  var posts=getPosts().slice().sort(function(a,b){return String(b.created||'').localeCompare(String(a.created||''))});
+  var html='<h1>See all</h1><p class="sub">Admin only. Har question, answer, reaction, aur har member ki personal chat.</p>';
+  html+='<div class="stats"><div class="card stat"><div class="l">Questions</div><div class="v">'+posts.length+'</div></div><div class="card stat"><div class="l">Answers</div><div class="v">'+getComments().length+'</div></div><div class="card stat"><div class="l">Reactions</div><div class="v">'+getLikes().length+'</div></div><div class="card stat"><div class="l">Messages</div><div class="v">'+getChat().filter(function(m){return dmParse(m.body)}).length+'</div></div></div>';
+  html+='<h2 style="font-size:1.05rem;margin:8px 0 10px">All questions</h2>';
+  if(!posts.length) html+='<div class="card empty">Koi question nahi.</div>';
+  posts.forEach(function(post){
+    var author=getProfile(post.user_id)||{};
+    var pcs=getComments().filter(function(x){return x.post_id===post.id});
+    var likes=getLikes().filter(function(x){return x.post_id===post.id}).length;
+    html+='<div class="card"><div class="post-title">'+esc(post.title)+'</div><div class="post-meta"><span>'+esc(publicName(post.user_id))+'</span> '+roleBadge(author)+'<span class="pill">'+esc(post.visibility||'members')+'</span><span>'+likes+' reactions</span><span>'+pcs.length+' answers</span></div><div class="post-body">'+esc(post.body)+'</div>';
+    pcs.forEach(function(cm){html+='<div class="comment"><div class="who">'+esc(publicName(cm.user_id))+'</div><div>'+esc(cm.body)+'</div></div>'});
+    html+='</div>';
+  });
+  html+='<h2 style="font-size:1.05rem;margin:8px 0 10px">Personal chats</h2>';
+  var members=getProfiles().filter(function(pr){return pr.role!=='admin'&&!isAdminEmail(pr.email)});
+  var any=false;
+  members.forEach(function(pr){
+    var msgs=threadMsgs(pr.id);
+    if(!msgs.length) return;
+    any=true;
+    html+='<div class="card"><b>'+esc((pr.first||'')+' '+(pr.last||''))+'</b> <span style="color:var(--muted);font-size:.85rem">'+esc(pr.email||'')+'</span>';
+    msgs.forEach(function(m){var d=dmParse(m.body);html+='<div class="chat-msg"><div class="who">'+(m.user_id===currentUser.id?'Admin':esc(publicName(m.user_id)))+'</div><div>'+esc(d?d.text:'')+'</div></div>'});
+    html+='</div>';
+  });
+  if(!any) html+='<div class="card empty">Koi personal message nahi.</div>';
+  return html;
+}
 function dmParse(body){var m=/^@@to:([0-9a-fA-F-]{36})@@([\s\S]*)$/.exec(body||'');if(!m)return null;return{to:m[1],text:m[2]}}
 function adminProfile(){return getProfiles().find(function(p){return p.role==='admin'||isAdminEmail(p.email)})||null}
 function threadMsgs(memberId){var admin=adminProfile();var aid=admin&&admin.id;return getChat().filter(function(m){var d=dmParse(m.body);if(!d||!aid)return false;var peer=m.user_id===aid?d.to:m.user_id;return peer===memberId&&(m.user_id===aid||d.to===aid)}).sort(function(a,b){return String(a.created||'').localeCompare(String(b.created||''))})}
