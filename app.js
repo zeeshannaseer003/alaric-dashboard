@@ -123,8 +123,7 @@ function canSeePost(post){
   if(post.user_id===currentUser.id)return true;
   if(post.visibility==='private')return false;
   if(!isApproved())return false;
-  if(post.visibility==='official')return isOfficial();
-  return isMemberAuthor(post);
+  return true;
 }
 function render(){
   var displayName=(currentUser.first+' '+currentUser.last).trim(),letter=(currentUser.first||'?')[0].toUpperCase(),secs=[];
