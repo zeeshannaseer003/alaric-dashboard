@@ -138,7 +138,8 @@ async function doForgot() {
 
 /* ---------- Data layer (cloud = Supabase, otherwise localStorage) ---------- */
 let useCloud = false;
-const cache = { profiles: [], posts: [], comments: [], likes: [], chat: [] };
+const cache = { profiles: [], posts: [], comments: [], likes: [], chat: [], requests: [] };
+let requestsTable = true; // false when the service_requests table does not exist yet
 const lsKey = (k) => 'alaric_v2_' + k;
 const saveLocal = (k) => localStorage.setItem(lsKey(k), JSON.stringify(cache[k]));
 
@@ -167,6 +168,11 @@ const TABLES = {
     table: 'chat_messages', order: ['created_at', true],
     from: (m) => ({ id: m.id, user_id: m.user_id, body: m.body, created: m.created_at }),
     to: (m) => ({ user_id: m.user_id, body: m.body })
+  },
+  requests: {
+    table: 'service_requests', order: ['created_at', false],
+    from: (r) => ({ id: r.id, user_id: r.user_id, name: r.name, email: r.email, service: r.service, specialty: r.specialty || '', issues: r.issues || '', needs: r.needs || '', phone: r.phone || '', tz: r.tz || '', slot1: r.slot1, slot2: r.slot2, status: r.status || 'new', acceptedSlot: r.accepted_slot, adminNote: r.admin_note || '', created: r.created_at }),
+    to: (r) => ({ user_id: r.user_id, name: r.name, email: r.email, service: r.service, specialty: r.specialty, issues: r.issues, needs: r.needs, phone: r.phone, tz: r.tz, slot1: r.slot1, slot2: r.slot2 })
   }
 };
 
@@ -189,8 +195,9 @@ async function loadAllData(selfId) {
     let q = sb.from(t.table).select(t.cols || '*');
     if (t.order) q = q.order(t.order[0], { ascending: t.order[1] });
     const r = await q;
-    if (r.error) { console.error('load ' + k, r.error); return; } // keep old cache on error
+    if (r.error) { console.error('load ' + k, r.error); if (k === 'requests') requestsTable = false; return; } // keep old cache on error
     cache[k] = (r.data || []).map(t.from);
+    if (k === 'requests') requestsTable = true;
   }));
   // load only my own photo
   if (selfId) {
@@ -415,7 +422,9 @@ const PAGES = {
   ask:       { label: 'Ask Question',     fn: pageNewPost },
   chat:      { label: () => isAdmin() ? 'Member Chat' : 'Admin Chat', fn: pageChat },
   premium:   { label: 'Premium Services', fn: pagePremiumServices },
-  services:  { label: 'Services',         fn: pageAdminServices },
+  services:  { label: 'Services',         fn: pageAdminServices, reqs: true },
+  request:   { label: 'Request',          fn: pageRequest, hidden: true },
+  myRequests:{ label: 'My Requests',      fn: pageMyRequests },
   profile:   { label: 'My Profile',       fn: pageProfile }
 };
 const NAV_ADMIN = [
@@ -426,7 +435,7 @@ const NAV_ADMIN = [
 ];
 const NAV_MEMBER = [
   ['Community', ['home', 'feed', 'ask', 'chat']],
-  ['Services', ['premium']],
+  ['Services', ['premium', 'myRequests']],
   ['Account', ['profile']]
 ];
 
@@ -436,11 +445,11 @@ function render(opts) {
   const main = $('c'), sy = window.scrollY, st = main.scrollTop;
   const groups = isAdmin() ? NAV_ADMIN : NAV_MEMBER;
   const visible = groups.reduce((a, g) => a.concat(g[1]), []);
-  if (visible.indexOf(page) < 0) page = visible[0];
+  if (visible.indexOf(page) < 0 && !(PAGES[page] && PAGES[page].hidden)) page = visible[0];
 
   const me = getProfile(currentUser.id) || { role, status };
   const letter = (currentUser.first || '?')[0].toUpperCase();
-  const pend = pendingList().length;
+  const pend = pendingList().length, newReqs = cache.requests.filter((r) => r.status === 'new').length;
 
   let h = '<div class="logo"><div class="logo-icon">A</div><div><div>Alaric</div><div class="logo-kicker">' + (isAdmin() ? 'Admin panel' : 'Member') + '</div></div></div>';
   h += '<div class="user-info"><div class="av">' + (me.photo ? '<img src="' + esc(me.photo) + '" alt="">' : esc(letter)) + '</div><div><div class="name">' + esc(fullName(currentUser)) + '</div><div style="margin-top:4px">' + roleBadge(me) + (currentUser.specialty ? ' <span style="color:var(--muted);font-size:.75rem">' + esc(currentUser.specialty) + '</span>' : '') + '</div></div></div>';
@@ -450,7 +459,8 @@ function render(opts) {
       const def = PAGES[key];
       const label = typeof def.label === 'function' ? def.label() : def.label;
       h += '<button class="nav' + (key === page ? ' on' : '') + '" data-act="nav" data-id="' + key + '">' + esc(label);
-      if (def.pending && isAdmin() && pend) h += '<span class="badge">' + pend + '</span>';
+      const n = def.pending ? pend : def.reqs ? newReqs : 0;
+      if (n && isAdmin()) h += '<span class="badge">' + n + '</span>';
       h += '</button>';
     });
   });
@@ -530,14 +540,201 @@ const SERVICES = [
   }
 ];
 
-/* service requests are stored as DMs to the admin: "Service request: <name> — from <member> (<email>)" */
-function serviceRequests() {
+/* ---------- Service requests: free 15-minute consultation form ---------- */
+const SPECIALTIES = ['Behavioral Health / Psychiatry', 'Family Medicine', 'Internal Medicine', 'Pediatrics', 'Cardiology', 'Dermatology', 'Orthopedics', 'OB/GYN', 'Neurology', 'Gastroenterology', 'Physical Therapy / Rehab', 'Chiropractic', 'Dentistry', 'Urgent Care', 'Other'];
+const SVC_SEP = ' | ';
+const splitServices = (s) => String(s || '').split(SVC_SEP).map((x) => x.trim()).filter(Boolean);
+const pad2 = (n) => String(n).padStart(2, '0');
+const dtLocal = (d) => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + 'T' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+function localTz() { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { return 'UTC'; } }
+function fmtInTz(iso, tz) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return '—';
+  const o = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' };
+  try { return d.toLocaleString('en-US', tz ? Object.assign({ timeZone: tz }, o) : o) + (tz ? ' (' + tz + ')' : ''); }
+  catch (e) { return d.toLocaleString('en-US', o); }
+}
+
+/* old-style requests that arrived as chat messages (before the form existed) */
+function legacyRequests() {
   return getChat().map((m) => {
     const d = dmParse(m.body);
     if (!d) return null;
-    const r = /^Service request: ([\s\S]*?) — from ([\s\S]*?) \(([^)]*)\)$/.exec(d.text);
-    return r ? { id: m.id, service: r[1], name: r[2], email: r[3], created: m.created } : null;
-  }).filter(Boolean).sort((a, b) => byCreated(b, a));
+    const r = /^Service request: ([^\n]*?) — from ([^\n]*?) \(([^)\n]*)\)/.exec(d.text);
+    return r ? { id: m.id, legacy: true, service: r[1], name: r[2], email: r[3], specialty: '', issues: d.text.split('\n').slice(1).join('\n'), created: m.created, status: 'legacy' } : null;
+  }).filter(Boolean);
+}
+const allRequests = () => cache.requests.concat(legacyRequests()).sort((a, b) => byCreated(b, a));
+
+async function updateRequest(id, patch) {
+  const r0 = cache.requests.find((x) => x.id === id);
+  if (!r0) return false;
+  if (useCloud) {
+    const row = {};
+    if ('status' in patch) row.status = patch.status;
+    if ('acceptedSlot' in patch) row.accepted_slot = patch.acceptedSlot;
+    if ('adminNote' in patch) row.admin_note = patch.adminNote;
+    const r = await sb.from('service_requests').update(row).eq('id', id).select();
+    if (r.error) { toast(r.error.message, 'error'); return false; }
+    if (!r.data || !r.data.length) { toast('Not allowed. Check the service_requests policies in Supabase.', 'error'); return false; }
+  }
+  Object.assign(r0, patch);
+  if (!useCloud) saveLocal('requests');
+  return true;
+}
+
+/* calendar helpers */
+const icsDate = (v) => new Date(v).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+function requestDetails(r) {
+  return 'Free 15-minute consultation\nMember: ' + r.name + ' (' + r.email + ')' + (r.phone ? '\nPhone: ' + r.phone : '') +
+    '\nSpecialty: ' + (r.specialty || '-') + '\nServices: ' + splitServices(r.service).join(', ') +
+    '\nIssues: ' + (r.issues || '-') + (r.needs ? '\nNeeds: ' + r.needs : '') + (r.adminNote ? '\nMeeting link / note: ' + r.adminNote : '');
+}
+function gcalLink(r, withGuest) {
+  const start = new Date(r.acceptedSlot || r.slot1), end = new Date(start.getTime() + 15 * 60000);
+  return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent('Alaric consultation — ' + r.name) +
+    '&dates=' + icsDate(start) + '/' + icsDate(end) + '&details=' + encodeURIComponent(requestDetails(r)) +
+    (withGuest && r.email ? '&add=' + encodeURIComponent(r.email) : '');
+}
+function downloadIcs(id) {
+  const r = cache.requests.find((x) => x.id === id);
+  if (!r) return;
+  const start = new Date(r.acceptedSlot || r.slot1), end = new Date(start.getTime() + 15 * 60000);
+  const t = (s) => String(s).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Alaric Health Services//Consultation//EN', 'BEGIN:VEVENT',
+    'UID:' + r.id + '@alaric', 'DTSTAMP:' + icsDate(new Date()), 'DTSTART:' + icsDate(start), 'DTEND:' + icsDate(end),
+    'SUMMARY:' + t('Alaric free consultation'), 'DESCRIPTION:' + t(requestDetails(r)), 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
+  a.download = 'alaric-consultation.ics';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
+function openRequest(name) { window._reqService = name; goTo('request'); }
+
+async function submitRequest(btn) {
+  const services = Array.prototype.map.call(document.querySelectorAll('input[name=reqSvc]:checked'), (i) => i.value);
+  const specialty = $('reqSpec').value, issues = $('reqIssues').value.trim(), needs = $('reqNeeds').value.trim(), phone = $('reqPhone').value.trim();
+  const s1 = $('reqSlot1').value, s2 = $('reqSlot2').value;
+  if (!services.length) return toast('Select at least one service', 'error');
+  if (!specialty) return toast('Select your specialty', 'error');
+  if (!issues) return toast('Tell us what issues you are facing', 'error');
+  if (!s1) return toast('Pick a date and time for your free 15-minute call', 'error');
+  const d1 = new Date(s1), d2 = s2 ? new Date(s2) : null, now = new Date();
+  if (isNaN(d1) || d1 <= now) return toast('Pick a future date and time', 'error');
+  if (d2 && (isNaN(d2) || d2 <= now)) return toast('Second choice must be a future date and time', 'error');
+
+  const tz = localTz();
+  const row = {
+    user_id: currentUser.id, name: fullName(currentUser), email: currentUser.email,
+    service: services.join(SVC_SEP), specialty, issues, needs, phone, tz,
+    slot1: d1.toISOString(), slot2: d2 ? d2.toISOString() : null, status: 'new'
+  };
+  btn.disabled = true;
+  let ok = false;
+  try {
+    if (useCloud && !requestsTable) {
+      // table not created yet: fall back to a chat message so the request is not lost
+      const admin = primaryAdmin();
+      if (isAdmin() || !admin) return toast('Requests table missing. Run the service_requests SQL in Supabase.', 'error');
+      const text = 'Service request: ' + services.join(', ') + ' — from ' + row.name + ' (' + row.email + ')' +
+        '\nSpecialty: ' + specialty + '\nIssues: ' + issues + (needs ? '\nNeeds: ' + needs : '') + (phone ? '\nPhone: ' + phone : '') +
+        '\nPreferred call: ' + fmtInTz(row.slot1, tz) + (row.slot2 ? '\nSecond choice: ' + fmtInTz(row.slot2, tz) : '');
+      ok = !!(await addRecord('chat', { user_id: currentUser.id, body: encodeDM(admin.id, text) }));
+    } else {
+      ok = !!(await addRecord('requests', row));
+    }
+  } finally { btn.disabled = false; }
+  if (ok) {
+    window._reqService = '';
+    toast('Request sent. We will confirm your free 15-minute call soon.');
+    goTo(isAdmin() ? 'services' : 'myRequests');
+  }
+}
+
+async function acceptRequest(id, slot) {
+  if (!isAdmin()) return;
+  const r = cache.requests.find((x) => x.id === id);
+  if (!r) return;
+  const when = slot === 2 && r.slot2 ? r.slot2 : r.slot1;
+  const note = prompt('Meeting link or note for the member (optional):', '');
+  if (note === null) return;
+  if (await updateRequest(id, { status: 'accepted', acceptedSlot: when, adminNote: note.trim() })) {
+    toast('Accepted. Tap "Add to Google Calendar" to put it on the Alaric calendar.');
+    render();
+  }
+}
+async function declineRequest(id) {
+  if (!isAdmin()) return;
+  const note = prompt('Reason or new suggested time for the member (optional):', '');
+  if (note === null) return;
+  if (await updateRequest(id, { status: 'declined', adminNote: note.trim() })) { toast('Declined'); render(); }
+}
+
+function rqRow(label, val) { return val ? '<div class="rq-row"><b>' + label + '</b><span>' + val + '</span></div>' : ''; }
+
+function requestCard(r, admin) {
+  if (r.legacy) {
+    return '<div class="card rq-card"><div class="rq-top"><div class="post-title">' + esc(r.name) + '</div><span class="pill">Chat request</span></div>' +
+      rqRow('Email', esc(r.email)) + rqRow('Service', esc(r.service)) + rqRow('Details', esc(r.issues).replace(/\n/g, '<br>')) + rqRow('Date', esc(fmtDate(r.created))) + '</div>';
+  }
+  const pill = r.status === 'accepted' ? 'ok' : r.status === 'declined' ? 'bad' : 'warn';
+  const svcs = splitServices(r.service).map(esc).join('<br>');
+  let h = '<div class="card rq-card"><div class="rq-top"><div><div class="post-title">' + esc(admin ? r.name : splitServices(r.service).join(' + ')) + '</div>' +
+    '<div style="color:var(--muted);font-size:.8rem">Sent ' + esc(fmtDate(r.created)) + '</div></div><span class="pill ' + pill + '">' + esc(r.status) + '</span></div>';
+  if (admin) h += rqRow('Email', esc(r.email)) + rqRow('Phone', esc(r.phone));
+  h += rqRow('Specialty', esc(r.specialty)) + rqRow('Services', svcs) + rqRow('Issues', esc(r.issues).replace(/\n/g, '<br>')) + rqRow('Needs', esc(r.needs).replace(/\n/g, '<br>'));
+  if (r.status === 'accepted') {
+    h += rqRow('Confirmed call', '<b style="color:#5eead4">' + esc(fmtInTz(r.acceptedSlot, r.tz)) + '</b>');
+    if (admin) h += rqRow('Your time', esc(fmtInTz(r.acceptedSlot)));
+  } else {
+    h += rqRow('1st choice', esc(fmtInTz(r.slot1, r.tz))) + (r.slot2 ? rqRow('2nd choice', esc(fmtInTz(r.slot2, r.tz))) : '');
+    if (admin) h += rqRow('Your time', esc(fmtInTz(r.slot1)) + (r.slot2 ? '<br>' + esc(fmtInTz(r.slot2)) : ''));
+  }
+  h += rqRow(r.status === 'declined' ? 'Message' : 'Meeting link / note', esc(r.adminNote));
+  h += '<div class="rq-actions">';
+  if (admin && r.status === 'new') {
+    h += '<button class="btn s ok" data-act="reqAccept" data-id="' + esc(r.id) + '" data-slot="1">Accept 1st choice</button>';
+    if (r.slot2) h += '<button class="btn s ok" data-act="reqAccept" data-id="' + esc(r.id) + '" data-slot="2">Accept 2nd choice</button>';
+    h += '<button class="btn s d" data-act="reqDecline" data-id="' + esc(r.id) + '">Decline</button>';
+  }
+  if (r.status === 'accepted') {
+    h += '<a class="btn s" target="_blank" rel="noopener" href="' + esc(gcalLink(r, admin)) + '">Add to Google Calendar</a>' +
+      '<button class="btn s o" data-act="ics" data-id="' + esc(r.id) + '">Download .ics</button>';
+  }
+  return h + '</div></div>';
+}
+
+function pageRequest() {
+  const pre = window._reqService || '';
+  const spec = currentUser.specialty || '';
+  const specs = !spec || SPECIALTIES.indexOf(spec) >= 0 ? SPECIALTIES : [spec].concat(SPECIALTIES);
+  const min = dtLocal(new Date(Date.now() + 3600000));
+  let h = '<div class="rq-wrap rq-form"><h1>Book your free consultation</h1><p class="sub">Tell us what you need. We will confirm a free 15-minute call on the Alaric calendar.</p>';
+  if (isAdmin()) h += '<div class="pending-banner">You are logged in as admin. This will create a test request.</div>';
+  h += '<div class="card"><p style="margin:0 0 16px;color:var(--muted);font-size:.9rem">Requesting as <b style="color:inherit">' + esc(fullName(currentUser)) + '</b> · ' + esc(currentUser.email) + '</p>';
+  h += '<div class="auth-field"><label>Services you need</label>';
+  SERVICES.forEach((s) => { h += '<label class="rq-svc"><input type="checkbox" name="reqSvc" value="' + esc(s.name) + '"' + (s.name === pre ? ' checked' : '') + '><span>' + esc(s.name) + '</span></label>'; });
+  h += '</div><div class="auth-field"><label>Your specialty</label><select id="reqSpec"><option value="">Select specialty</option>' +
+    specs.map((x) => '<option' + (x === spec ? ' selected' : '') + '>' + esc(x) + '</option>').join('') + '</select></div>';
+  h += '<div class="auth-field"><label>What issues are you facing right now?</label><textarea id="reqIssues" rows="4" placeholder="Example: many denied claims, slow credentialing, no one answers patient calls..."></textarea></div>';
+  h += '<div class="auth-field"><label>Anything specific you need from us? (optional)</label><textarea id="reqNeeds" rows="3"></textarea></div>';
+  h += '<div class="auth-field"><label>Phone (optional)</label><input id="reqPhone" type="tel" placeholder="Best number to call"></div>';
+  h += '<div class="rq-grid"><div class="auth-field"><label>Free 15-minute call: 1st choice</label><input id="reqSlot1" type="datetime-local" min="' + min + '"></div>' +
+    '<div class="auth-field"><label>2nd choice (optional)</label><input id="reqSlot2" type="datetime-local" min="' + min + '"></div></div>';
+  h += '<p class="rq-note">Times are in your timezone: <b>' + esc(localTz()) + '</b>. Please do not include patient names or any patient information in this form.</p>';
+  h += '<div class="rq-actions"><button class="btn" data-act="reqSubmit">Send request</button><button class="btn s o" data-act="nav" data-id="premium">Cancel</button></div></div></div>';
+  return h;
+}
+
+function pageMyRequests() {
+  const mine = cache.requests.filter((r) => r.user_id === currentUser.id).sort((a, b) => byCreated(b, a));
+  let h = '<h1>My Requests</h1><p class="sub">Your consultation requests and their status.</p>';
+  if (!mine.length) return h + '<div class="card empty">No requests yet. Pick a service on Premium Services and book your free 15-minute call.<div style="margin-top:14px"><button class="btn" data-act="nav" data-id="premium">View services</button></div></div>';
+  return h + mine.map((r) => requestCard(r, false)).join('');
 }
 
 function pricingHtml(s) {
@@ -557,33 +754,33 @@ function serviceCard(s) {
 }
 
 function servicesTable(withRequests) {
-  const reqs = withRequests ? serviceRequests() : [];
+  const reqs = withRequests ? allRequests() : [];
+  const count = (name) => reqs.filter((r) => splitServices(r.service).indexOf(name) >= 0).length;
   let h = '<div class="card"><div class="table-wrap"><table><tr><th>Service</th><th>Pricing</th><th>Included</th>' + (withRequests ? '<th>Requests</th>' : '') + '</tr>';
   SERVICES.forEach((s) => {
     h += '<tr><td><b>' + s.icon + ' ' + esc(s.name) + '</b></td><td class="ps-cell">' + pricingHtml(s) + '</td><td>' + s.features.length + ' services</td>' +
-      (withRequests ? '<td><span class="pill ' + (reqs.some((r) => r.service === s.name) ? 'ok' : '') + '">' + reqs.filter((r) => r.service === s.name).length + '</span></td>' : '') + '</tr>';
+      (withRequests ? '<td><span class="pill ' + (count(s.name) ? 'ok' : '') + '">' + count(s.name) + '</span></td>' : '') + '</tr>';
   });
   return h + '</table></div></div>';
 }
 
 function pagePremiumServices() {
   return '<h1>Premium Services</h1><p class="sub">Alaric Health Services — one partner for billing, credentialing, front-desk support and marketing.</p>' +
-    '<div class="ps-hero"><b>Alaric Health Services</b><span>Medical Billing · Credentialing · Virtual Assistance · Digital Marketing</span></div>' +
+    '<div class="ps-hero"><b>Alaric Health Services</b><span>Medical Billing · Credentialing · Virtual Assistance · Digital Marketing</span><span>Every request includes a free 15-minute consultation call.</span></div>' +
     '<div class="ps-grid">' + SERVICES.map(serviceCard).join('') + '</div>' +
     '<h2 class="ps-h2">Compare services</h2>' + servicesTable(false) +
-    '<div class="card" style="text-align:center;padding:28px"><div style="font-weight:750;font-size:1.15rem;margin-bottom:8px">Not sure which service fits?</div><p class="sub" style="margin-bottom:16px">Tell us what you need — we will get back within 24 hours.</p><button class="btn" data-act="svc" data-id="General quote">Request a quote</button></div>';
+    '<div class="card" style="text-align:center;padding:28px"><div style="font-weight:750;font-size:1.15rem;margin-bottom:8px">Not sure which service fits?</div><p class="sub" style="margin-bottom:16px">Tell us what you need and book a free 15-minute consultation call.</p><button class="btn" data-act="svc" data-id="General quote">Book free consultation</button></div>';
 }
 
 function pageAdminServices() {
-  const reqs = serviceRequests();
-  let h = '<h1>Services</h1><p class="sub">Price list and service requests from members. To change a price or add a service, edit the SERVICES list in app.js.</p>';
-  h += '<div class="stats">' + statCard('Services', SERVICES.length) + statCard('Requests', reqs.length) + statCard('Latest request', reqs.length ? esc(fmtDate(reqs[0].created)) : '—', true) + '</div>';
+  const reqs = allRequests(), mine = cache.requests;
+  let h = '<h1>Services</h1><p class="sub">Consultation requests from members and the price list. To change a price or add a service, edit the SERVICES list in app.js.</p>';
+  if (useCloud && !requestsTable) h += '<div class="pending-banner"><b>Requests table missing.</b> Run the service_requests SQL in Supabase. Until then, requests arrive as chat messages and cannot be accepted here.</div>';
+  h += '<div class="stats">' + statCard('New requests', mine.filter((r) => r.status === 'new').length) + statCard('Accepted', mine.filter((r) => r.status === 'accepted').length) + statCard('Total requests', reqs.length) + statCard('Services', SERVICES.length) + '</div>';
+  h += '<h2 class="ps-h2">Consultation requests</h2>';
+  h += reqs.length ? reqs.map((r) => requestCard(r, true)).join('') : '<div class="card empty">No service requests yet.</div>';
   h += '<h2 class="ps-h2">Price list</h2>' + servicesTable(true);
-  h += '<h2 class="ps-h2">Recent requests</h2>';
-  if (!reqs.length) return h + '<div class="card empty">No service requests yet.</div>';
-  h += '<div class="card"><div class="table-wrap"><table><tr><th>Date</th><th>Service</th><th>Member</th><th>Email</th></tr>';
-  reqs.slice(0, 50).forEach((r) => { h += '<tr><td>' + esc(fmtDate(r.created)) + '</td><td>' + esc(r.service) + '</td><td>' + esc(r.name) + '</td><td>' + esc(r.email) + '</td></tr>'; });
-  return h + '</table></div></div>';
+  return h;
 }
 
 function statCard(label, value, small) {
@@ -750,15 +947,6 @@ async function changeAccess(id, patch, doneMsg, confirmMsg) {
   if (await saveProfile(Object.assign({ id }, patch))) { toast(doneMsg); render(); }
 }
 
-async function sendServiceRequest(name) {
-  const admin = primaryAdmin();
-  if (isAdmin()) return toast('Admins cannot request services.', 'error');
-  if (!admin) return toast('Admin is not available right now.', 'error');
-  const text = 'Service request: ' + name + ' — from ' + fullName(currentUser) + ' (' + currentUser.email + ')';
-  const m = await addRecord('chat', { user_id: currentUser.id, body: encodeDM(admin.id, text) });
-  if (m) toast('Request sent to admin. We will contact you.');
-}
-
 const ACTIONS = {
   nav: (id) => goTo(id),
   logout: () => logout(),
@@ -770,7 +958,11 @@ const ACTIONS = {
     d.style.display = open ? 'block' : 'none';
     el.textContent = open ? 'Hide list ▲' : 'View all ' + (el.dataset.count || '') + ' included ▼';
   },
-  svc: (name) => sendServiceRequest(name),
+  svc: (name) => openRequest(name),
+  reqSubmit: (id, btn) => submitRequest(btn),
+  reqAccept: (id, el) => acceptRequest(id, +el.dataset.slot),
+  reqDecline: (id) => declineRequest(id),
+  ics: (id) => downloadIcs(id),
 
   approve: (id) => changeAccess(id, { status: 'approved' }, 'Approved'),
   reject: (id) => changeAccess(id, { status: 'rejected', role: 'member' }, 'Rejected', 'Reject this member?'),
@@ -920,11 +1112,25 @@ function injectPolish() {
     '.ps-cta{width:100%}' +
     '.ps-h2{font-size:1.05rem;margin:8px 0 10px}' +
     '.ps-cell{line-height:1.6}' +
+    '.rq-wrap{max-width:760px}' +
+    '.rq-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}' +
+    '.rq-form{color-scheme:dark}' +
+    '.rq-form select,.rq-form textarea,.rq-form input[type=datetime-local],.rq-form input[type=tel]{width:100%;box-sizing:border-box;padding:10px 12px;font:inherit;color:inherit;background:rgba(255,255,255,.05);border:1px solid var(--border,rgba(255,255,255,.15));border-radius:10px}' +
+    '.rq-form option{background:#0f1a22;color:#e5e7eb}' +
+    '.rq-svc{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;margin-bottom:8px;border:1px solid var(--border,rgba(255,255,255,.15));border-radius:10px;cursor:pointer;line-height:1.4}' +
+    '.rq-svc input{margin-top:3px;flex:none}' +
+    '.rq-note{color:var(--muted);font-size:.82rem;margin:4px 0 16px}' +
+    '.rq-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}' +
+    '.rq-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:8px}' +
+    '.rq-row{display:flex;gap:10px;font-size:.88rem;margin:5px 0;line-height:1.5}' +
+    '.rq-row b{flex:none;min-width:120px;color:var(--muted);font-weight:600}' +
+    '.rq-row span{overflow-wrap:anywhere}' +
+    'a.btn{text-decoration:none;display:inline-block}' +
     '.toast.error{background:#b42318;color:#fff}' +
     '.alaric-modal{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6);padding:16px}' +
     '.alaric-modal-box{width:100%;max-width:400px;background:var(--card,#111827);border:1px solid var(--border,rgba(255,255,255,.15));border-radius:14px;padding:24px}' +
     '.alaric-modal-msg{color:#f87171;font-size:.85rem;min-height:1.2em;margin:8px 0}' +
-    '@media(max-width:720px){.chat-grid{grid-template-columns:1fr!important}.stats{grid-template-columns:repeat(2,1fr)!important}}' +
+    '@media(max-width:720px){.rq-grid{grid-template-columns:1fr}.rq-row{flex-direction:column;gap:0}.chat-grid{grid-template-columns:1fr!important}.stats{grid-template-columns:repeat(2,1fr)!important}}' +
     '@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}';
   document.head.appendChild(s);
 }
