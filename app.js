@@ -546,14 +546,77 @@ const SVC_SEP = ' | ';
 const splitServices = (s) => String(s || '').split(SVC_SEP).map((x) => x.trim()).filter(Boolean);
 const pad2 = (n) => String(n).padStart(2, '0');
 const dtLocal = (d) => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + 'T' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
-function localTz() { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { return 'UTC'; } }
+/* Fixed business timezone: Central Time (Texas / Houston HQ) */
+const BUSINESS_TZ = 'America/Chicago';
+const BUSINESS_TZ_LABEL = 'Central Time (CST/CDT — Texas)';
+function localTz() { return BUSINESS_TZ; }
 function fmtInTz(iso, tz) {
   if (!iso) return '—';
   const d = new Date(iso);
   if (isNaN(d)) return '—';
-  const o = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' };
-  try { return d.toLocaleString('en-US', tz ? Object.assign({ timeZone: tz }, o) : o) + (tz ? ' (' + tz + ')' : ''); }
-  catch (e) { return d.toLocaleString('en-US', o); }
+  const zone = tz || BUSINESS_TZ;
+  const o = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: zone };
+  try {
+    const label = zone === BUSINESS_TZ ? 'CST/CDT' : zone;
+    return d.toLocaleString('en-US', o) + ' (' + label + ')';
+  } catch (e) {
+    return d.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+}
+/** Parse a datetime-local value as if it were entered in America/Chicago, return UTC ISO string */
+function chicagoLocalToIso(localStr) {
+  if (!localStr) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(localStr);
+  if (!m) return null;
+  const y = +m[1], mo = +m[2], day = +m[3], h = +m[4], mi = +m[5];
+  // Binary search UTC ms such that wall-clock in Chicago matches Y-M-D H:M, then snap to second 0
+  let lo = Date.UTC(y, mo - 1, day, h - 10, mi);
+  let hi = Date.UTC(y, mo - 1, day, h + 10, mi);
+  const target = y * 1e10 + mo * 1e8 + day * 1e6 + h * 1e4 + mi * 100;
+  let found = null;
+  for (let i = 0; i < 48; i++) {
+    const mid = Math.floor((lo + hi) / 2);
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: BUSINESS_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false
+    }).formatToParts(new Date(mid));
+    const get = (t) => +(parts.find((p) => p.type === t) || {}).value || 0;
+    let hh = get('hour'); if (hh === 24) hh = 0;
+    const val = get('year') * 1e10 + get('month') * 1e8 + get('day') * 1e6 + hh * 1e4 + get('minute') * 100;
+    if (val === target) { found = mid; break; }
+    if (val < target) lo = mid + 1; else hi = mid - 1;
+  }
+  if (found == null) found = Math.floor((lo + hi) / 2);
+  // snap to exact minute (clear seconds/ms)
+  const snapped = new Date(found);
+  snapped.setUTCSeconds(0, 0);
+  // re-check minute; if DST edge shifted, adjust by up to 2 minutes
+  for (let adj = 0; adj < 120000; adj += 60000) {
+    for (const cand of [found - adj, found + adj]) {
+      const p = new Intl.DateTimeFormat('en-US', {
+        timeZone: BUSINESS_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+      }).formatToParts(new Date(cand));
+      const g = (t) => +(p.find((x) => x.type === t) || {}).value || 0;
+      let hh = g('hour'); if (hh === 24) hh = 0;
+      if (g('year') === y && g('month') === mo && g('day') === day && hh === h && g('minute') === mi) {
+        const out = new Date(cand);
+        out.setUTCSeconds(0, 0);
+        return out.toISOString();
+      }
+    }
+  }
+  return snapped.toISOString();
+}
+/** Current wall-clock time components in Chicago, for min attribute on datetime-local */
+function chicagoNowParts() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: BUSINESS_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false
+  }).formatToParts(new Date(Date.now() + 3600000)); // +1h minimum
+  const get = (t) => (parts.find((p) => p.type === t) || {}).value || '00';
+  let hh = get('hour'); if (hh === '24') hh = '00';
+  return get('year') + '-' + get('month') + '-' + get('day') + 'T' + hh + ':' + get('minute');
 }
 
 /* old-style requests that arrived as chat messages (before the form existed) */
@@ -623,15 +686,16 @@ async function submitRequest(btn) {
   if (!specialty) return toast('Select your specialty', 'error');
   if (!issues) return toast('Tell us what issues you are facing', 'error');
   if (!s1) return toast('Pick a date and time for your free 15-minute call', 'error');
-  const d1 = new Date(s1), d2 = s2 ? new Date(s2) : null, now = new Date();
-  if (isNaN(d1) || d1 <= now) return toast('Pick a future date and time', 'error');
-  if (d2 && (isNaN(d2) || d2 <= now)) return toast('Second choice must be a future date and time', 'error');
+  const iso1 = chicagoLocalToIso(s1), iso2 = s2 ? chicagoLocalToIso(s2) : null;
+  const d1 = iso1 ? new Date(iso1) : null, d2 = iso2 ? new Date(iso2) : null, now = new Date();
+  if (!d1 || isNaN(d1) || d1 <= now) return toast('Pick a future date and time (Central Time)', 'error');
+  if (d2 && (isNaN(d2) || d2 <= now)) return toast('Second choice must be a future date and time (Central Time)', 'error');
 
-  const tz = localTz();
+  const tz = BUSINESS_TZ;
   const row = {
     user_id: currentUser.id, name: fullName(currentUser), email: currentUser.email,
     service: services.join(SVC_SEP), specialty, issues, needs, phone, tz,
-    slot1: d1.toISOString(), slot2: d2 ? d2.toISOString() : null, status: 'new'
+    slot1: iso1, slot2: iso2, status: 'new'
   };
   btn.disabled = true;
   let ok = false;
@@ -689,10 +753,10 @@ function requestCard(r, admin) {
   h += rqRow('Specialty', esc(r.specialty)) + rqRow('Services', svcs) + rqRow('Issues', esc(r.issues).replace(/\n/g, '<br>')) + rqRow('Needs', esc(r.needs).replace(/\n/g, '<br>'));
   if (r.status === 'accepted') {
     h += rqRow('Confirmed call', '<b style="color:#5eead4">' + esc(fmtInTz(r.acceptedSlot, r.tz)) + '</b>');
-    if (admin) h += rqRow('Your time', esc(fmtInTz(r.acceptedSlot)));
+    if (admin) h += rqRow('Admin view (Central Time)', esc(fmtInTz(r.acceptedSlot, BUSINESS_TZ)));
   } else {
-    h += rqRow('1st choice', esc(fmtInTz(r.slot1, r.tz))) + (r.slot2 ? rqRow('2nd choice', esc(fmtInTz(r.slot2, r.tz))) : '');
-    if (admin) h += rqRow('Your time', esc(fmtInTz(r.slot1)) + (r.slot2 ? '<br>' + esc(fmtInTz(r.slot2)) : ''));
+    h += rqRow('1st choice', esc(fmtInTz(r.slot1, r.tz || BUSINESS_TZ))) + (r.slot2 ? rqRow('2nd choice', esc(fmtInTz(r.slot2, r.tz || BUSINESS_TZ))) : '');
+    if (admin) h += rqRow('Admin view (Central Time)', esc(fmtInTz(r.slot1, BUSINESS_TZ)) + (r.slot2 ? '<br>' + esc(fmtInTz(r.slot2, BUSINESS_TZ)) : ''));
   }
   h += rqRow(r.status === 'declined' ? 'Message' : 'Meeting link / note', esc(r.adminNote));
   h += '<div class="rq-actions">';
@@ -712,7 +776,7 @@ function pageRequest() {
   const pre = window._reqService || '';
   const spec = currentUser.specialty || '';
   const specs = !spec || SPECIALTIES.indexOf(spec) >= 0 ? SPECIALTIES : [spec].concat(SPECIALTIES);
-  const min = dtLocal(new Date(Date.now() + 3600000));
+  const min = chicagoNowParts();
   let h = '<div class="rq-wrap rq-form"><h1>Book your free consultation</h1><p class="sub">Tell us what you need. We will confirm a free 15-minute call on the Alaric calendar.</p>';
   if (isAdmin()) h += '<div class="pending-banner">You are logged in as admin. This will create a test request.</div>';
   h += '<div class="card"><p style="margin:0 0 16px;color:var(--muted);font-size:.9rem">Requesting as <b style="color:inherit">' + esc(fullName(currentUser)) + '</b> · ' + esc(currentUser.email) + '</p>';
@@ -725,7 +789,7 @@ function pageRequest() {
   h += '<div class="auth-field"><label>Phone (optional)</label><input id="reqPhone" type="tel" placeholder="Best number to call"></div>';
   h += '<div class="rq-grid"><div class="auth-field"><label>Free 15-minute call: 1st choice</label><input id="reqSlot1" type="datetime-local" min="' + min + '"></div>' +
     '<div class="auth-field"><label>2nd choice (optional)</label><input id="reqSlot2" type="datetime-local" min="' + min + '"></div></div>';
-  h += '<p class="rq-note">Times are in your timezone: <b>' + esc(localTz()) + '</b>. Please do not include patient names or any patient information in this form.</p>';
+  h += '<p class="rq-note">All times are in <b>' + BUSINESS_TZ_LABEL + '</b> (Houston HQ). Please do not include patient names or any patient information in this form.</p>';
   h += '<div class="rq-actions"><button class="btn" data-act="reqSubmit">Send request</button><button class="btn s o" data-act="nav" data-id="premium">Cancel</button></div></div></div>';
   return h;
 }
