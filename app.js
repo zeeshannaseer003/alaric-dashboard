@@ -142,19 +142,50 @@ function render(){
   document.querySelectorAll('.nav[data-i]').forEach(function(btn){btn.onclick=function(){idx=+btn.dataset.i;render()}});bindPageEvents();
 }
 function pagePremiumServices(){
-  var html='<h1>⭐ Premium Services</h1><p class="sub">Alaric Health Services — Hire our professional team. Transparent pricing.</p>';
+  var html='<h1>⭐ Premium Services</h1><p class="sub">Alaric Health Services — Hire our professional team. Click View Details for full list.</p>';
   html+='<div class="pending-banner" style="border-color:rgba(45,212,191,.35);background:rgba(45,212,191,.08)"><b>Alaric Health Services</b> — Medical Billing, Credentialing, Virtual Assistant & more.</div>';
-  html+='<div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:28px">';
-  html+='<div class="card" style="border-color:rgba(45,212,191,.4)"><div style="font-size:1.4rem;margin-bottom:8px">💰</div><div style="font-weight:750;font-size:1.15rem;margin-bottom:6px">Medical Billing Package</div><div style="color:var(--muted);font-size:.85rem;margin-bottom:12px">Full billing suite under one rate</div><div style="font-size:1.75rem;font-weight:800;margin-bottom:4px">5% <span style="font-size:.9rem;font-weight:500;color:var(--muted)">of collections</span></div><div style="color:var(--muted);font-size:.8rem;margin-bottom:14px">or $15 / hour — all included</div><ul style="list-style:none;padding:0;margin:0 0 16px;font-size:.88rem;line-height:1.8"><li>✓ Medical Billing & Coding</li><li>✓ Rejection Handling</li><li>✓ Accounts Receivable</li><li>✓ Denial Management</li><li>✓ Eligibility Verification</li><li>✓ Prior Authorization</li><li>✓ Payment Posting & Reporting</li></ul><button class="btn" style="width:100%" onclick="toast(\'Request received — we will contact you\')">Get Started</button></div>';
-  html+='<div class="card"><div style="font-size:1.4rem;margin-bottom:8px">📋</div><div style="font-weight:750;font-size:1.15rem;margin-bottom:6px">Credentialing</div><div style="color:var(--muted);font-size:.85rem;margin-bottom:12px">Initial, re-credentialing & enrollment</div><div style="font-size:1.75rem;font-weight:800;margin-bottom:4px">$150 <span style="font-size:.9rem;font-weight:500;color:var(--muted)">/ application</span></div><div style="color:var(--muted);font-size:.8rem;margin-bottom:14px">One-time per application</div><ul style="list-style:none;padding:0;margin:0 0 16px;font-size:.88rem;line-height:1.8"><li>✓ Initial Credentialing</li><li>✓ Re-Credentialing</li><li>✓ Credentialing Verification</li><li>✓ Provider Enrollment</li></ul><button class="btn s" style="width:100%" onclick="toast(\'Request received — we will contact you\')">Get Started</button></div>';
-  html+='<div class="card"><div style="font-size:1.4rem;margin-bottom:8px">🖥️</div><div style="font-weight:750;font-size:1.15rem;margin-bottom:6px">Virtual Assistant</div><div style="color:var(--muted);font-size:.85rem;margin-bottom:12px">Full-time dedicated VA</div><div style="font-size:1.75rem;font-weight:800;margin-bottom:4px">$1,500 <span style="font-size:.9rem;font-weight:500;color:var(--muted)">/ month</span></div><div style="color:var(--muted);font-size:.8rem;margin-bottom:14px">5 days/week × 9 hrs/day — or $10 / hour</div><ul style="list-style:none;padding:0;margin:0 0 16px;font-size:.88rem;line-height:1.8"><li>✓ Appointment Scheduling</li><li>✓ Patient Follow-ups</li><li>✓ Data Entry & Documentation</li><li>✓ Admin Support</li></ul><button class="btn s" style="width:100%" onclick="toast(\'Request received — we will contact you\')">Get Started</button></div>';
+  html+='<div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:22px">';
+
+  html+='<div class="card" style="border-color:rgba(45,212,191,.4)">';
+  html+='<div style="font-size:1.4rem;margin-bottom:8px">💰</div>';
+  html+='<div style="font-weight:750;font-size:1.15rem;margin-bottom:6px">Medical Billing Package</div>';
+  html+='<div style="color:var(--muted);font-size:.85rem;margin-bottom:12px">Full billing suite under one rate</div>';
+  html+='<div style="font-size:1.75rem;font-weight:800;margin-bottom:4px">5% <span style="font-size:.9rem;font-weight:500;color:var(--muted)">of collections</span></div>';
+  html+='<div style="color:var(--muted);font-size:.8rem;margin-bottom:14px">or $15 / hour — all included</div>';
+  html+='<button class="btn s o" style="width:100%;margin-bottom:10px" data-toggle-det="det-billing">View Details ▼</button>';
+  html+='<div id="det-billing" style="display:none;font-size:.88rem;line-height:1.85;color:#d1d5db;border-top:1px solid var(--border);padding-top:12px;margin-bottom:12px">';
+  html+='<b style="color:#5eead4">What is included:</b><br>';
+  html+='✓ Medical Billing Services<br>✓ Medical Coding<br>✓ Claim Rejection Handling<br>✓ Accounts Receivable Management<br>✓ Denial Management<br>✓ Payment Posting<br>✓ Patient Billing and Statements<br>✓ EOB and ERA Posting<br>✓ Insurance Verification and Benefits Verification<br>✓ Prior Authorization';
   html+='</div>';
-  html+='<h2 style="font-size:1.2rem;font-weight:700;margin:8px 0 14px">All Services & Pricing</h2>';
-  html+='<div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">';
-  var services=[['📄','Medical Billing Package','5% or $15/hr','Coding, Rejection Handling, AR, Denial Mgmt, Eligibility, Prior Auth, Payment Posting & Reporting'],['🔐','Credentialing Services','$150','per application'],['🖥️','Virtual Assistant','$1,500/mo or $10/hr','5 days/week, 9 hrs/day — or hourly'],['📈','Digital Marketing','$500/mo','without website'],['🌐','Digital Marketing + Website','$700','first month, then $500/mo'],['⌨️','Virtual Medical Scribe','$12/hr','per hour']];
-  services.forEach(function(s){html+='<div class="card" style="padding:16px"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><span style="font-size:1.2rem">'+s[0]+'</span><b style="font-size:.95rem">'+s[1]+'</b></div><div style="font-size:1.2rem;font-weight:800;color:#5eead4">'+s[2]+'</div><div style="font-size:.78rem;color:var(--muted);margin-top:4px">'+s[3]+'</div></div>'});
+  html+='<button class="btn" style="width:100%" data-svc-request="1">Get Started</button></div>';
+
+  html+='<div class="card">';
+  html+='<div style="font-size:1.4rem;margin-bottom:8px">📋</div>';
+  html+='<div style="font-weight:750;font-size:1.15rem;margin-bottom:6px">Medical Credentialing</div>';
+  html+='<div style="color:var(--muted);font-size:.85rem;margin-bottom:12px">Initial, re-credentialing, enrollment & maintenance</div>';
+  html+='<div style="font-size:1.75rem;font-weight:800;margin-bottom:4px">$150 <span style="font-size:.9rem;font-weight:500;color:var(--muted)">/ application</span></div>';
+  html+='<div style="color:var(--muted);font-size:.8rem;margin-bottom:14px">One-time per application</div>';
+  html+='<button class="btn s o" style="width:100%;margin-bottom:10px" data-toggle-det="det-cred">View Details ▼</button>';
+  html+='<div id="det-cred" style="display:none;font-size:.88rem;line-height:1.85;color:#d1d5db;border-top:1px solid var(--border);padding-top:12px;margin-bottom:12px">';
+  html+='<b style="color:#5eead4">What is included:</b><br>';
+  html+='✓ Initial Setup and Document Collection<br>✓ CAQH Profile Management<br>✓ Primary Source Verification<br>✓ Insurance Payer Applications<br>✓ Medicare and Medicaid Enrollment<br>✓ Group Linking and Practice Locations<br>✓ Application Follow Up and Corrections<br>✓ Approval and Enrollment Confirmation<br>✓ Post Enrollment Setup<br>✓ Ongoing Maintenance<br>✓ Credentialing';
   html+='</div>';
-  html+='<div class="card" style="margin-top:20px;text-align:center;padding:28px"><div style="font-weight:750;font-size:1.15rem;margin-bottom:8px">Ready to Hire Our Team?</div><p class="sub" style="margin-bottom:16px">Tell us what you need — we will get back within 24 hours.</p><button class="btn" onclick="toast(\'Quote request sent!\')">Request a Quote</button></div>';
+  html+='<button class="btn s" style="width:100%" data-svc-request="1">Get Started</button></div>';
+
+  html+='<div class="card">';
+  html+='<div style="font-size:1.4rem;margin-bottom:8px">🖥️</div>';
+  html+='<div style="font-weight:750;font-size:1.15rem;margin-bottom:6px">Virtual Assistant</div>';
+  html+='<div style="color:var(--muted);font-size:.85rem;margin-bottom:12px">Full-time dedicated VA</div>';
+  html+='<div style="font-size:1.75rem;font-weight:800;margin-bottom:4px">$1,500 <span style="font-size:.9rem;font-weight:500;color:var(--muted)">/ month</span></div>';
+  html+='<div style="color:var(--muted);font-size:.8rem;margin-bottom:14px">5 days/week × 9 hrs/day — or $10 / hour</div>';
+  html+='<button class="btn s o" style="width:100%;margin-bottom:10px" data-toggle-det="det-va">View Details ▼</button>';
+  html+='<div id="det-va" style="display:none;font-size:.88rem;line-height:1.85;color:#d1d5db;border-top:1px solid var(--border);padding-top:12px;margin-bottom:12px">';
+  html+='<b style="color:#5eead4">What is included:</b><br>✓ Appointment Scheduling<br>✓ Patient Follow-ups<br>✓ Data Entry & Documentation<br>✓ Admin Support';
+  html+='</div>';
+  html+='<button class="btn s" style="width:100%" data-svc-request="1">Get Started</button></div>';
+
+  html+='</div>';
+  html+='<div class="card" style="text-align:center;padding:28px"><div style="font-weight:750;font-size:1.15rem;margin-bottom:8px">Ready to Hire Our Team?</div><p class="sub" style="margin-bottom:16px">Tell us what you need — we will get back within 24 hours.</p><button class="btn" data-svc-request="1">Request a Quote</button></div>';
   return html;
 }
 function pageMemberHome(){var html='<h1>Member Home</h1><p class="sub">Members see and answer member questions only. Admin tools stay hidden.</p>';if(!isApproved())html+='<div class="pending-banner"><b>Approval pending.</b> Admin approve karega. Uske baad aap question post kar sakte ho — woh aapko, doosre members ko, aur admin ko dikhegi.</div>';var mine=getPosts().filter(function(p){return p.user_id===currentUser.id});html+='<div class="stats"><div class="card stat"><div class="l">My questions</div><div class="v">'+mine.length+'</div></div><div class="card stat"><div class="l">Status</div><div class="v" style="font-size:1.1rem">'+(isApproved()?'Approved':'Pending')+'</div></div></div>';if(!useCloud)html+='<div class="pending-banner"><b>Shared mode off.</b> Owner: run supabase-setup.sql in Supabase SQL Editor.</div>';return html}
@@ -242,6 +273,9 @@ function pageChat(){
 }
 function pageProfile(){var p=getProfile(currentUser.id)||{},photo=p.photo||'',letter=(currentUser.first||'?')[0].toUpperCase();var html='<h1>My Profile</h1><div class="card" style="max-width:480px">';if(photo)html+='<img class="profile-photo" src="'+photo+'" alt="">';else html+='<div class="profile-photo-ph">'+letter+'</div>';html+='<label class="photo-btn">Change photo<input type="file" id="photoInput" accept="image/*"></label><div style="margin-bottom:12px">'+roleBadge(p.role?p:{role:role,status:status})+'</div>';html+='<div class="auth-field"><label>Name</label><input value="'+esc(currentUser.first+' '+currentUser.last)+'" disabled style="opacity:.7"></div>';html+='<div class="auth-field"><label>Email</label><input value="'+esc(currentUser.email)+'" disabled style="opacity:.7"></div>';html+='<div class="auth-field"><label>Specialty</label><input value="'+esc(currentUser.specialty)+'" disabled style="opacity:.7"></div>';html+='<div class="auth-field"><label>Role</label><input value="'+esc(role)+'" disabled style="opacity:.7"></div></div>';return html}
 function bindPageEvents(){
+  document.querySelectorAll('[data-toggle-det]').forEach(function(btn){btn.onclick=function(){var id=btn.getAttribute('data-toggle-det');var e=document.getElementById(id);if(e)e.style.display=e.style.display==='none'?'block':'none'}});
+  document.querySelectorAll('[data-svc-request]').forEach(function(btn){btn.onclick=function(){toast('Request received — we will contact you')}});
+
   var pi=document.getElementById('photoInput');if(pi)pi.onchange=function(e){var f=e.target.files&&e.target.files[0];if(!f)return;if(f.size>900000){toast('Image too large');return}var r=new FileReader();r.onload=async function(){await upsertProfileCloud({id:currentUser.id,photo:r.result});toast('Photo updated');render()};r.readAsDataURL(f)};
   var rf=document.getElementById('refreshFeed');if(rf)rf.onclick=async function(){await loadAllData();toast('Refreshed');render()};
   document.querySelectorAll('[data-approve]').forEach(function(btn){btn.onclick=async function(){if(!isAdmin())return;await upsertProfileCloud({id:btn.getAttribute('data-approve'),status:'approved'});toast('Approved');render()}});
@@ -258,4 +292,3 @@ function bindPageEvents(){
 var cs=document.getElementById('chatSend');if(cs)cs.onclick=async function(){var inp=document.getElementById('chatInput');var body=(inp&&inp.value||'').trim();var to=cs.getAttribute('data-to');if(!body||!to)return;await addChatCloud({user_id:currentUser.id,body:'@@to:'+to+'@@'+body});render()};
 }
 (async function init(){var sess=await sb.auth.getSession();if(sess.data&&sess.data.session&&sess.data.session.user)await enterApp(sess.data.session.user);sb.auth.onAuthStateChange(function(event){if(event==='SIGNED_OUT'){currentUser=null;document.getElementById('app').classList.remove('show');document.getElementById('authScreen').style.display=''}})})();
-
