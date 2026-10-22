@@ -415,10 +415,11 @@ const PAGES = {
   ask:       { label: 'Ask Question',     fn: pageNewPost },
   chat:      { label: () => isAdmin() ? 'Member Chat' : 'Admin Chat', fn: pageChat },
   premium:   { label: 'Premium Services', fn: pagePremiumServices },
+  services:  { label: 'Services',         fn: pageAdminServices },
   profile:   { label: 'My Profile',       fn: pageProfile }
 };
 const NAV_ADMIN = [
-  ['Control', ['seeAll', 'approvals', 'members']],
+  ['Control', ['seeAll', 'approvals', 'members', 'services']],
   ['Community', ['feed', 'chat']],
   ['Services', ['premium']],
   ['Account', ['profile']]
@@ -472,40 +473,117 @@ function goTo(key) { page = key; render({ keepScroll: false }); window.scrollTo(
 const SERVICES = [
   {
     id: 'billing', icon: '💰', name: 'Medical Billing Package', featured: true,
-    blurb: 'Full billing suite under one rate', price: '5%', unit: 'of collections', note: 'or $15 / hour — all included',
+    blurb: 'Full billing suite under one rate',
+    pricing: [
+      { amount: '5%', unit: 'of collections', note: 'Everything below is included' },
+      { pre: 'or', amount: '$15', unit: '/ hour' }
+    ],
     features: ['Medical Billing Services', 'Medical Coding', 'Claim Rejection Handling', 'Accounts Receivable Management', 'Denial Management', 'Payment Posting', 'Patient Billing and Statements', 'EOB and ERA Posting', 'Insurance Verification and Benefits Verification', 'Prior Authorization']
   },
   {
     id: 'cred', icon: '📋', name: 'Medical Credentialing',
-    blurb: 'Initial, re-credentialing, enrollment & maintenance', price: '$150', unit: '/ application', note: 'One-time per application',
+    blurb: 'Initial, re-credentialing, enrollment and maintenance',
+    pricing: [{ amount: '$150', unit: '/ application', note: 'One-time per application' }],
     features: ['Initial Setup and Document Collection', 'CAQH Profile Management', 'Primary Source Verification', 'Insurance Payer Applications', 'Medicare and Medicaid Enrollment', 'Group Linking and Practice Locations', 'Application Follow Up and Corrections', 'Approval and Enrollment Confirmation', 'Post Enrollment Setup', 'Ongoing Maintenance']
   },
   {
-    id: 'va', icon: '🖥️', name: 'Virtual Assistant',
-    blurb: 'Full-time dedicated VA', price: '$1,500', unit: '/ month', note: '5 days/week × 9 hrs/day — or $10 / hour',
-    features: ['Appointment Scheduling', 'Patient Follow-ups', 'Data Entry & Documentation', 'Admin Support']
+    id: 'va', icon: '🖥️', name: 'Medical Virtual Assistance and Patient Help Desk',
+    blurb: 'Full-time dedicated VA for your front desk and patient support',
+    pricing: [
+      { amount: '$1,500', unit: '/ month flat fee', note: 'Dedicated VA · 5 days/week × 9 hrs/day' },
+      { pre: 'or', amount: '$10', unit: '/ hour' }
+    ],
+    features: [
+      'Patient Communication and Call Management',
+      'Appointment Scheduling, Confirmation and Follow Up',
+      'Patient Registration, Intake and Demographic Updates',
+      'Insurance Eligibility, Benefits Verification and Referral Coordination',
+      'Patient Help Desk, Inquiries and Complaint Resolution',
+      'EHR and EMR Management and Medical Data Entry',
+      'Prescription Refill Requests and Lab Test Coordination',
+      'Medical Records, Documentation and Patient Portal Support',
+      'Billing Inquiries, Payment Support and Claims Follow Up',
+      'Telehealth Support, Patient Recall, Escalations and After Hours Assistance'
+    ]
+  },
+  {
+    id: 'digital', icon: '🚀', name: 'Digital Marketing, Social Media Marketing and Website Development',
+    blurb: 'Your website, search ranking, ads and social media managed by one team',
+    pricing: [
+      { amount: '$700', unit: 'first month', note: 'Website development and initial setup' },
+      { pre: 'then', amount: '$500', unit: '/ month', note: 'Ongoing digital marketing and social media management, starting from the second month' }
+    ],
+    features: [
+      'Website Design, Development and Mobile Responsiveness',
+      'Website Maintenance, Speed Optimization and Technical Support',
+      'Landing Pages, Contact Forms and Appointment Booking Integration',
+      'Search Engine Optimization (SEO) and Google Business Profile Optimization',
+      'Google Ads Management and Paid Advertising Campaigns',
+      'Social Media Account Setup and Profile Optimization',
+      'Facebook, Instagram and LinkedIn Page Management',
+      'Social Media Content Creation, Graphic Design and Promotional Posts',
+      'Reels, Short Video Content and Content Scheduling',
+      'Social Media Advertising, Audience Targeting and Lead Generation',
+      'Email Marketing, Healthcare Content Marketing and Online Reputation Management',
+      'Marketing Analytics, Performance Tracking and Monthly Reporting'
+    ]
   }
 ];
 
+/* service requests are stored as DMs to the admin: "Service request: <name> — from <member> (<email>)" */
+function serviceRequests() {
+  return getChat().map((m) => {
+    const d = dmParse(m.body);
+    if (!d) return null;
+    const r = /^Service request: ([\s\S]*?) — from ([\s\S]*?) \(([^)]*)\)$/.exec(d.text);
+    return r ? { id: m.id, service: r[1], name: r[2], email: r[3], created: m.created } : null;
+  }).filter(Boolean).sort((a, b) => byCreated(b, a));
+}
+
+function pricingHtml(s) {
+  return s.pricing.map((p) => (p.pre ? '<em>' + esc(p.pre) + '</em> ' : '') + '<b>' + esc(p.amount) + '</b> ' + esc(p.unit)).join('<br>');
+}
+
 function serviceCard(s) {
-  const detId = 'det-' + s.id;
-  return '<div class="card"' + (s.featured ? ' style="border-color:rgba(45,212,191,.4)"' : '') + '>' +
-    '<div style="font-size:1.4rem;margin-bottom:8px">' + s.icon + '</div>' +
-    '<div style="font-weight:750;font-size:1.15rem;margin-bottom:6px">' + esc(s.name) + '</div>' +
-    '<div style="color:var(--muted);font-size:.85rem;margin-bottom:12px">' + esc(s.blurb) + '</div>' +
-    '<div style="font-size:1.75rem;font-weight:800;margin-bottom:4px">' + esc(s.price) + ' <span style="font-size:.9rem;font-weight:500;color:var(--muted)">' + esc(s.unit) + '</span></div>' +
-    '<div style="color:var(--muted);font-size:.8rem;margin-bottom:14px">' + esc(s.note) + '</div>' +
-    '<button class="btn s o" style="width:100%;margin-bottom:10px" data-act="toggle" data-id="' + detId + '">View Details ▼</button>' +
-    '<div id="' + detId + '" style="display:none;font-size:.88rem;line-height:1.85;color:#d1d5db;border-top:1px solid var(--border);padding-top:12px;margin-bottom:12px"><b style="color:#5eead4">What is included:</b><br>' +
-    s.features.map((f) => '✓ ' + esc(f)).join('<br>') + '</div>' +
-    '<button class="btn' + (s.featured ? '' : ' s') + '" style="width:100%" data-act="svc" data-id="' + esc(s.name) + '">Get Started</button></div>';
+  const detId = 'det-' + s.id, main = s.pricing[0], rest = s.pricing.slice(1);
+  return '<div class="ps-card' + (s.featured ? ' ps-featured' : '') + '">' +
+    '<div class="ps-head"><div class="ps-icon">' + s.icon + '</div><div><div class="ps-name">' + esc(s.name) + '</div><div class="ps-blurb">' + esc(s.blurb) + '</div></div></div>' +
+    '<div class="ps-price"><div class="ps-amount">' + esc(main.amount) + '<span>' + esc(main.unit) + '</span></div>' +
+    (main.note ? '<div class="ps-note">' + esc(main.note) + '</div>' : '') +
+    rest.map((p) => '<div class="ps-alt"><em>' + esc(p.pre || '') + '</em> <b>' + esc(p.amount) + '</b> ' + esc(p.unit) + (p.note ? '<div class="ps-note">' + esc(p.note) + '</div>' : '') + '</div>').join('') + '</div>' +
+    '<button class="btn s o" data-act="toggle" data-id="' + detId + '" data-count="' + s.features.length + '">View all ' + s.features.length + ' included ▼</button>' +
+    '<ul id="' + detId + '" class="ps-list" style="display:none">' + s.features.map((f) => '<li>' + esc(f) + '</li>').join('') + '</ul>' +
+    '<button class="btn ps-cta" data-act="svc" data-id="' + esc(s.name) + '">Get started</button></div>';
+}
+
+function servicesTable(withRequests) {
+  const reqs = withRequests ? serviceRequests() : [];
+  let h = '<div class="card"><div class="table-wrap"><table><tr><th>Service</th><th>Pricing</th><th>Included</th>' + (withRequests ? '<th>Requests</th>' : '') + '</tr>';
+  SERVICES.forEach((s) => {
+    h += '<tr><td><b>' + s.icon + ' ' + esc(s.name) + '</b></td><td class="ps-cell">' + pricingHtml(s) + '</td><td>' + s.features.length + ' services</td>' +
+      (withRequests ? '<td><span class="pill ' + (reqs.some((r) => r.service === s.name) ? 'ok' : '') + '">' + reqs.filter((r) => r.service === s.name).length + '</span></td>' : '') + '</tr>';
+  });
+  return h + '</table></div></div>';
 }
 
 function pagePremiumServices() {
-  return '<h1>⭐ Premium Services</h1><p class="sub">Alaric Health Services — Hire our professional team. Click View Details for the full list.</p>' +
-    '<div class="pending-banner" style="border-color:rgba(45,212,191,.35);background:rgba(45,212,191,.08)"><b>Alaric Health Services</b> — Medical Billing, Credentialing, Virtual Assistant & more.</div>' +
-    '<div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:22px">' + SERVICES.map(serviceCard).join('') + '</div>' +
-    '<div class="card" style="text-align:center;padding:28px"><div style="font-weight:750;font-size:1.15rem;margin-bottom:8px">Ready to Hire Our Team?</div><p class="sub" style="margin-bottom:16px">Tell us what you need — we will get back within 24 hours.</p><button class="btn" data-act="svc" data-id="General quote">Request a Quote</button></div>';
+  return '<h1>Premium Services</h1><p class="sub">Alaric Health Services — one partner for billing, credentialing, front-desk support and marketing.</p>' +
+    '<div class="ps-hero"><b>Alaric Health Services</b><span>Medical Billing · Credentialing · Virtual Assistance · Digital Marketing</span></div>' +
+    '<div class="ps-grid">' + SERVICES.map(serviceCard).join('') + '</div>' +
+    '<h2 class="ps-h2">Compare services</h2>' + servicesTable(false) +
+    '<div class="card" style="text-align:center;padding:28px"><div style="font-weight:750;font-size:1.15rem;margin-bottom:8px">Not sure which service fits?</div><p class="sub" style="margin-bottom:16px">Tell us what you need — we will get back within 24 hours.</p><button class="btn" data-act="svc" data-id="General quote">Request a quote</button></div>';
+}
+
+function pageAdminServices() {
+  const reqs = serviceRequests();
+  let h = '<h1>Services</h1><p class="sub">Price list and service requests from members. To change a price or add a service, edit the SERVICES list in app.js.</p>';
+  h += '<div class="stats">' + statCard('Services', SERVICES.length) + statCard('Requests', reqs.length) + statCard('Latest request', reqs.length ? esc(fmtDate(reqs[0].created)) : '—', true) + '</div>';
+  h += '<h2 class="ps-h2">Price list</h2>' + servicesTable(true);
+  h += '<h2 class="ps-h2">Recent requests</h2>';
+  if (!reqs.length) return h + '<div class="card empty">No service requests yet.</div>';
+  h += '<div class="card"><div class="table-wrap"><table><tr><th>Date</th><th>Service</th><th>Member</th><th>Email</th></tr>';
+  reqs.slice(0, 50).forEach((r) => { h += '<tr><td>' + esc(fmtDate(r.created)) + '</td><td>' + esc(r.service) + '</td><td>' + esc(r.name) + '</td><td>' + esc(r.email) + '</td></tr>'; });
+  return h + '</table></div></div>';
 }
 
 function statCard(label, value, small) {
@@ -690,7 +768,7 @@ const ACTIONS = {
     if (!d) return;
     const open = d.style.display === 'none';
     d.style.display = open ? 'block' : 'none';
-    el.textContent = open ? 'Hide Details ▲' : 'View Details ▼';
+    el.textContent = open ? 'Hide list ▲' : 'View all ' + (el.dataset.count || '') + ' included ▼';
   },
   svc: (name) => sendServiceRequest(name),
 
@@ -820,6 +898,28 @@ function injectPolish() {
     '.chat-box{max-height:min(55vh,460px);overflow-y:auto;padding-right:4px}' +
     '.chat-msg{border-radius:12px;padding:8px 12px;margin-bottom:8px;background:rgba(255,255,255,.05);overflow-wrap:anywhere}' +
     '.post-body,.comment{overflow-wrap:anywhere;white-space:pre-wrap}' +
+    '.ps-hero{display:flex;flex-direction:column;gap:4px;padding:18px 22px;border:1px solid rgba(45,212,191,.35);background:rgba(45,212,191,.07);border-radius:16px;margin-bottom:22px}' +
+    '.ps-hero span{color:var(--muted);font-size:.88rem}' +
+    '.ps-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,310px),1fr));gap:18px;align-items:start;margin-bottom:26px}' +
+    '.ps-card{display:flex;flex-direction:column;gap:14px;padding:22px;border:1px solid var(--border,rgba(255,255,255,.12));border-radius:16px;background:var(--card,rgba(255,255,255,.03))}' +
+    '.ps-featured{border-color:rgba(45,212,191,.5)}' +
+    '.ps-head{display:flex;gap:12px;align-items:flex-start}' +
+    '.ps-icon{flex:none;width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:1.3rem;border-radius:12px;background:rgba(45,212,191,.14)}' +
+    '.ps-name{font-weight:750;font-size:1.05rem;line-height:1.3}' +
+    '.ps-blurb{color:var(--muted);font-size:.85rem;margin-top:3px}' +
+    '.ps-price{padding:14px 16px;border-radius:12px;background:rgba(45,212,191,.07)}' +
+    '.ps-amount{font-size:2rem;font-weight:800;line-height:1.1}' +
+    '.ps-amount span{font-size:.9rem;font-weight:500;color:var(--muted);margin-left:6px}' +
+    '.ps-alt{margin-top:10px;padding-top:10px;border-top:1px dashed var(--border,rgba(255,255,255,.15))}' +
+    '.ps-alt b{font-size:1.15rem}' +
+    '.ps-alt em,.ps-cell em{font-style:normal;color:var(--muted)}' +
+    '.ps-note{font-size:.8rem;color:var(--muted);margin-top:4px}' +
+    '.ps-list{margin:0;padding:12px 0 0;list-style:none;font-size:.88rem;line-height:1.5;color:#d1d5db;border-top:1px solid var(--border,rgba(255,255,255,.12))}' +
+    '.ps-list li{position:relative;padding-left:22px;margin-bottom:8px}' +
+    '.ps-list li::before{content:"✓";position:absolute;left:0;color:#5eead4}' +
+    '.ps-cta{width:100%}' +
+    '.ps-h2{font-size:1.05rem;margin:8px 0 10px}' +
+    '.ps-cell{line-height:1.6}' +
     '.toast.error{background:#b42318;color:#fff}' +
     '.alaric-modal{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6);padding:16px}' +
     '.alaric-modal-box{width:100%;max-width:400px;background:var(--card,#111827);border:1px solid var(--border,rgba(255,255,255,.15));border-radius:14px;padding:24px}' +
