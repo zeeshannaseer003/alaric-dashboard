@@ -147,13 +147,13 @@ const TABLES = {
   profiles: {
     table: 'profiles',
     // photo is NOT selected here on purpose (big base64); own photo is loaded separately
-    cols: 'id,email,first_name,last_name,specialty,role,status,created_at',
-    from: (p) => ({ id: p.id, email: p.email, first: p.first_name, last: p.last_name, specialty: p.specialty, role: p.role || 'member', status: p.status || 'pending', photo: p.photo || '', created: p.created_at })
+    cols: '*',
+    from: (p) => ({ id: p.id, email: p.email, first: p.first_name, last: p.last_name, specialty: p.specialty, role: p.role || 'member', status: p.status || 'pending', bio: p.bio || '', tier: p.tier || 'member', verify_requested: !!p.verify_requested, photo: p.photo || '', created: p.created_at })
   },
   posts: {
     table: 'posts', order: ['created_at', false],
-    from: (p) => ({ id: p.id, user_id: p.user_id, title: p.title, body: p.body, visibility: p.visibility || 'members', created: p.created_at }),
-    to: (p) => ({ user_id: p.user_id, title: p.title, body: p.body, visibility: p.visibility || 'members' })
+    from: (p) => ({ id: p.id, user_id: p.user_id, title: p.title, body: p.body, image: p.image || '', visibility: p.visibility || 'members', created: p.created_at }),
+    to: (p) => ({ user_id: p.user_id, title: p.title, body: p.body, image: p.image || null, visibility: p.visibility || 'members' })
   },
   comments: {
     table: 'comments', order: ['created_at', true],
@@ -215,7 +215,7 @@ const getLikes = () => cache.likes;
 const getChat = () => cache.chat;
 
 /* profile save: sends ONLY the fields you pass; rolls back cache if the DB refuses */
-const PROFILE_COLS = { email: 'email', first: 'first_name', last: 'last_name', specialty: 'specialty', role: 'role', status: 'status', photo: 'photo' };
+const PROFILE_COLS = { email: 'email', first: 'first_name', last: 'last_name', specialty: 'specialty', role: 'role', status: 'status', photo: 'photo', bio: 'bio', tier: 'tier', verify_requested: 'verify_requested' };
 
 async function saveProfile(patch, opts) {
   opts = opts || {};
@@ -291,23 +291,56 @@ async function toggleLike(postId, userId) {
 /* ---------- Session / roles ---------- */
 let currentUser = null, role = 'member', status = 'pending', entering = false;
 
-const isAdmin = () => role === 'admin';
-const isOfficial = () => role === 'admin' || role === 'staff' || role === 'official';
+const isOwner = () => currentUser && isAdminEmail(currentUser.email);
+const isAdmin = () => role === 'admin' || role === 'super_admin' || isOwner();
+const isSuperAdmin = () => role === 'super_admin' || isOwner();
+const isOfficial = () => isAdmin() || role === 'staff' || role === 'official';
 const isApproved = () => status === 'approved' || isAdmin();
+const canUseChat = () => isAdmin(); // Owner + Super Admin only (admin role includes both)
+const memberTier = (p) => {
+  p = p || getProfile(currentUser && currentUser.id) || {};
+  if (p.role === 'admin' || isAdminEmail(p.email)) return 'admin';
+  if (p.role === 'super_admin') return 'super_admin';
+  if (p.role === 'official' || p.role === 'staff') return 'official';
+  if (p.tier === 'premium') return 'premium';
+  if (p.tier === 'verified') return 'verified';
+  return 'member';
+};
+const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+const joinedAt = (p) => {
+  const d = new Date((p && p.created) || 0);
+  return isNaN(d) ? null : d;
+};
+const monthsOnPlatform = (p) => {
+  const j = joinedAt(p);
+  if (!j) return 0;
+  return (Date.now() - j.getTime()) / MONTH_MS;
+};
+const isEligibleForVerify = (p) => {
+  p = p || getProfile(currentUser && currentUser.id);
+  if (!p || !isApproved()) return false;
+  if (memberTier(p) === 'verified' || memberTier(p) === 'premium') return false;
+  if (p.role === 'admin' || p.role === 'super_admin' || p.role === 'official') return false;
+  return monthsOnPlatform(p) >= 1;
+};
 
 function userFromSession(user) {
   const m = user.user_metadata || {}, local = getProfile(user.id) || {}, em = user.email || '';
   let r = 'member';
   if (isAdminEmail(em)) r = 'admin';
-  else if (local.role === 'admin' || local.role === 'official' || local.role === 'staff') r = local.role;
+  else if (local.role === 'admin' || local.role === 'super_admin' || local.role === 'official' || local.role === 'staff') r = local.role;
   let st = local.status;
-  if (!st) st = (r === 'admin' || r === 'official') ? 'approved' : 'pending';
+  if (!st) st = (r === 'admin' || r === 'super_admin' || r === 'official') ? 'approved' : 'pending';
   return {
     id: user.id, email: em,
     first: m.first_name || local.first || (em ? em.split('@')[0] : 'User'),
     last: m.last_name || local.last || '',
     specialty: m.specialty || local.specialty || '',
-    role: r, status: st
+    role: r, status: st,
+    bio: local.bio || '',
+    tier: local.tier || 'member',
+    verify_requested: !!local.verify_requested,
+    created: local.created || null
   };
 }
 
@@ -347,11 +380,21 @@ function resetSession() {
 async function logout() { await sb.auth.signOut(); resetSession(); }
 
 /* ---------- Display helpers ---------- */
+
+function privacyFooter() {
+  return '<div class="priv-bar"><span>🔒</span><div><b>Privacy.</b> No personal or patient information is collected here. Do not share personal details, phone numbers, addresses, or patient data with anyone on this platform.</div></div>';
+}
+function communityDisclaimer() {
+  return '<div class="disc-bar"><b>Community guidelines.</b> Questions and answers are member opinions only — not medical, legal, or billing advice. You are solely responsible for what you post. Alaric admins are not liable for member content. Official support is only via Message Admin.</div>';
+}
 function roleBadge(p) {
   if (!p) return '<span class="badge-role member">Member</span>';
-  if (p.role === 'admin') return '<span class="badge-role admin">Admin</span>';
+  if (p.role === 'admin' || isAdminEmail(p.email)) return '<span class="badge-role admin">Admin</span>';
+  if (p.role === 'super_admin') return '<span class="badge-role admin">Super Admin</span>';
   if (p.role === 'official' || p.role === 'staff') return '<span class="badge-role official">Official</span>';
-  if (p.status === 'approved') return '<span class="badge-role verified">Verified</span>';
+  if (p.tier === 'premium') return '<span class="badge-role premium">★ Premium</span>';
+  if (p.tier === 'verified') return '<span class="badge-role verified">✓ Verified</span>';
+  if (p.status === 'approved') return '<span class="badge-role member">Member</span>';
   if (p.status === 'pending') return '<span class="badge-role pending">Pending</span>';
   if (p.status === 'rejected') return '<span class="badge-role pending">Rejected</span>';
   return '<span class="badge-role member">Member</span>';
@@ -387,7 +430,7 @@ function dmParse(body) {
   const m = /^@@to:([0-9a-fA-F-]{36})@@([\s\S]*)$/.exec(body || '');
   return m ? { to: m[1], text: m[2] } : null;
 }
-const isAdminProfile = (p) => p.role === 'admin' || isAdminEmail(p.email);
+const isAdminProfile = (p) => p.role === 'admin' || p.role === 'super_admin' || isAdminEmail(p.email);
 const adminIds = () => new Set(getProfiles().filter(isAdminProfile).map((p) => p.id));
 function primaryAdmin() {
   const all = getProfiles().filter(isAdminProfile);
@@ -420,7 +463,7 @@ const PAGES = {
   home:      { label: 'Home',             fn: pageMemberHome },
   feed:      { label: () => isAdmin() ? 'All Questions' : 'Questions', fn: pageFeed },
   ask:       { label: 'Ask Question',     fn: pageNewPost },
-  chat:      { label: () => isAdmin() ? 'Member Chat' : 'Admin Chat', fn: pageChat },
+  chat:      { label: () => isAdmin() ? 'Member Chat' : 'Message Admin', fn: pageChat },
   premium:   { label: 'Premium Services', fn: pagePremiumServices },
   services:  { label: 'Services',         fn: pageAdminServices, reqs: true },
   request:   { label: 'Request',          fn: pageRequest, hidden: true },
@@ -438,6 +481,7 @@ const NAV_MEMBER = [
   ['Services', ['premium', 'myRequests']],
   ['Account', ['profile']]
 ];
+// chat page for members = Message Admin only (enforced in pageChat)
 
 function render(opts) {
   if (!currentUser) return;
@@ -727,7 +771,14 @@ async function acceptRequest(id, slot) {
   const note = prompt('Meeting link or note for the member (optional):', '');
   if (note === null) return;
   if (await updateRequest(id, { status: 'accepted', acceptedSlot: when, adminNote: note.trim() })) {
-    toast('Accepted. Tap "Add to Google Calendar" to put it on the Alaric calendar.');
+    // Service accepted → Premium member
+    if (r.user_id) {
+      const mem = getProfile(r.user_id);
+      if (mem && mem.tier !== 'premium' && !isAdminEmail(mem.email)) {
+        await saveProfile({ id: r.user_id, tier: 'premium', status: 'approved' });
+      }
+    }
+    toast('Accepted · member upgraded to Premium. Add to Google Calendar if needed.');
     render();
   }
 }
@@ -852,10 +903,65 @@ function statCard(label, value, small) {
 }
 
 function pageMemberHome() {
+  const me = getProfile(currentUser.id) || currentUser;
   const mine = getPosts().filter((p) => p.user_id === currentUser.id);
-  const st = isApproved() ? 'Approved' : status === 'rejected' ? 'Rejected' : 'Pending';
-  return '<h1>Member Home</h1><p class="sub">Members see and answer member questions only. Admin tools stay hidden.</p>' + accessBanner() +
-    '<div class="stats">' + statCard('My questions', mine.length) + statCard('Status', st, true) + '</div>';
+  const myReqs = cache.requests.filter((r) => r.user_id === currentUser.id);
+  const tier = memberTier(me);
+  const st = isApproved() ? (tier === 'premium' ? 'Premium' : tier === 'verified' ? 'Verified' : 'Approved') : status === 'rejected' ? 'Rejected' : 'Pending';
+  const joined = joinedAt(me);
+  const joinedStr = joined ? joined.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '—';
+  const eligible = isEligibleForVerify(me);
+  const applied = !!(me.verify_requested);
+
+  let h = '<div class="mh-hero">' +
+    '<div class="mh-hero-text">' +
+    '<div class="mh-kicker">Private provider network</div>' +
+    '<h1>Welcome back, ' + esc(currentUser.first || 'Member') + '</h1>' +
+    '<p class="sub" style="margin:0">' + esc(currentUser.specialty || 'Healthcare provider') + ' · Member since ' + esc(joinedStr) + '</p>' +
+    '<div style="margin-top:12px">' + roleBadge(me) + '</div></div>' +
+    '<div class="mh-hero-badge">' + (tier === 'premium' ? '★' : tier === 'verified' ? '✓' : 'A') + '</div></div>';
+
+  h += accessBanner();
+
+  if (eligible && !applied) {
+    h += '<div class="card verify-card"><div><b>You are eligible for a Verifier badge</b>' +
+      '<p class="sub" style="margin:6px 0 0">You have been on the platform for 1+ month. Apply so an admin can review and grant the ✓ Verified badge.</p></div>' +
+      '<button class="btn" data-act="applyVerify">Apply for Verifier</button></div>';
+  } else if (applied && tier !== 'verified' && tier !== 'premium') {
+    h += '<div class="card verify-card pending"><div><b>Verification requested</b><p class="sub" style="margin:6px 0 0">An admin will review your application soon.</p></div></div>';
+  }
+
+  h += '<div class="stats mh-stats">' +
+    statCard('Status', st, true) +
+    statCard('My questions', mine.length) +
+    statCard('Service requests', myReqs.length) +
+    statCard('Network', 'Private', true) +
+    '</div>';
+
+  h += '<div class="mh-actions">' +
+    '<button class="btn mh-tile" data-act="nav" data-id="ask"><span class="mh-tile-icon">✎</span><span><b>Post a question</b><small>Text + optional image</small></span></button>' +
+    '<button class="btn mh-tile o" data-act="nav" data-id="premium"><span class="mh-tile-icon">★</span><span><b>Book consultation</b><small>Free 15-min call · Central Time</small></span></button>' +
+    '<button class="btn mh-tile o" data-act="nav" data-id="myRequests"><span class="mh-tile-icon">☰</span><span><b>My requests</b><small>Status & schedule</small></span></button>' +
+    '<button class="btn mh-tile o" data-act="nav" data-id="chat"><span class="mh-tile-icon">✉</span><span><b>Message Admin</b><small>Private support only</small></span></button>' +
+    '</div>';
+
+  if (tier === 'premium') {
+    h += '<div class="card premium-strip"><b>★ Premium member</b><span>Priority consultation · dedicated support channel via Message Admin</span></div>';
+  }
+
+  const recent = mine.slice(0, 3);
+  h += '<h2 class="ps-h2" style="margin-top:28px">Recent activity</h2>';
+  if (!recent.length) {
+    h += '<div class="card empty">No questions yet. Share a professional question with the network — no patient data.</div>';
+  } else {
+    recent.forEach((p) => {
+      h += '<div class="card" style="padding:14px 16px"><div class="post-title" style="font-size:1rem">' + esc(p.title) + '</div>' +
+        '<div class="post-meta"><span>' + esc(fmtDate(p.created)) + '</span></div></div>';
+    });
+  }
+
+  h += privacyFooter();
+  return h;
 }
 
 function pageAdminOverview() {
@@ -877,21 +983,38 @@ function pageAdminOverview() {
 
 function pageAdminMembers() {
   const profiles = getProfiles().slice().sort((a, b) => byCreated(b, a));
-  let h = '<h1>Members</h1><p class="sub">Grant Official or Admin. New users = members only.</p>';
+  const verifyQueue = profiles.filter((p) => p.verify_requested && p.tier !== 'verified' && p.tier !== 'premium');
+  let h = '<h1>Members</h1><p class="sub">Approve, verify (after 1 month), Premium, Official, Super Admin. Owner account cannot be changed.</p>';
+
+  if (verifyQueue.length) {
+    h += '<h2 class="ps-h2">Verification requests</h2>';
+    verifyQueue.forEach((p) => {
+      h += '<div class="card verify-card"><div><b>' + esc(fullName(p)) + '</b> · ' + esc(p.specialty || '') +
+        '<p class="sub" style="margin:4px 0 0">Applied for Verifier badge · joined ' + esc(fmtDate(p.created)) + '</p></div>' +
+        '<button class="btn s ok" data-act="makeVerified" data-id="' + esc(p.id) + '">Grant Verified ✓</button></div>';
+    });
+  }
+
   if (!profiles.length) return h + '<div class="card empty">No members yet</div>';
-  h += '<div class="card"><div class="table-wrap"><table><tr><th>Name</th><th>Email</th><th>Specialty</th><th>Role</th><th>Status</th><th>Actions</th></tr>';
+  h += '<h2 class="ps-h2">All members</h2>';
+  h += '<div class="card"><div class="table-wrap"><table><tr><th>Name</th><th>Email</th><th>Specialty</th><th>Tier</th><th>Status</th><th>Joined</th><th>Actions</th></tr>';
   profiles.forEach((p) => {
     const owner = isAdminEmail(p.email), self = p.id === currentUser.id, id = esc(p.id);
     const pill = p.status === 'approved' ? 'ok' : p.status === 'rejected' ? 'bad' : 'warn';
-    h += '<tr><td>' + esc(fullName(p)) + '</td><td>' + esc(p.email || '—') + '</td><td>' + esc(p.specialty || '—') + '</td><td>' + roleBadge(p) + (owner ? ' <span class="pill ok">Owner</span>' : '') + '</td><td><span class="pill ' + pill + '">' + esc(p.status || 'pending') + '</span></td><td style="white-space:nowrap">';
-    if (owner) h += '<span style="color:var(--muted);font-size:.8rem">Main admin</span>';
+    const eligible = monthsOnPlatform(p) >= 1 && p.tier !== 'verified' && p.tier !== 'premium' && p.role === 'member';
+    h += '<tr><td>' + esc(fullName(p)) + '</td><td>' + esc(p.email || '—') + '</td><td>' + esc(p.specialty || '—') + '</td><td>' + roleBadge(p) + (owner ? ' <span class="pill ok">Owner</span>' : '') + '</td>' +
+      '<td><span class="pill ' + pill + '">' + esc(p.status || 'pending') + '</span></td><td>' + esc(fmtDate(p.created)) + '</td><td style="white-space:nowrap">';
+    if (owner) h += '<span style="color:var(--muted);font-size:.8rem">Owner</span>';
     else if (self) h += '<span style="color:var(--muted);font-size:.8rem">You</span>';
     else {
       if (p.status !== 'approved') h += '<button class="btn s ok" data-act="approve" data-id="' + id + '">Approve</button> ';
       if (p.status !== 'rejected') h += '<button class="btn s d" data-act="reject" data-id="' + id + '">Reject</button> ';
-      if (p.role !== 'official') h += '<button class="btn s o" data-act="makeOfficial" data-id="' + id + '">Make Official</button> ';
-      if (p.role !== 'admin') h += '<button class="btn s" data-act="makeAdmin" data-id="' + id + '">Make Admin</button> ';
-      if (p.role === 'admin' || p.role === 'official') h += '<button class="btn s o" data-act="makeMember" data-id="' + id + '">Make Member</button>';
+      if (eligible) h += '<button class="btn s ok" data-act="makeVerified" data-id="' + id + '">Make Verified</button> ';
+      if (p.tier !== 'premium') h += '<button class="btn s o" data-act="makePremium" data-id="' + id + '">Make Premium</button> ';
+      if (p.role !== 'official') h += '<button class="btn s o" data-act="makeOfficial" data-id="' + id + '">Official</button> ';
+      if (p.role !== 'super_admin' && p.role !== 'admin') h += '<button class="btn s" data-act="makeSuperAdmin" data-id="' + id + '">Super Admin</button> ';
+      if (p.role === 'admin' || p.role === 'super_admin' || p.role === 'official' || p.tier === 'premium' || p.tier === 'verified')
+        h += '<button class="btn s o" data-act="makeMember" data-id="' + id + '">Reset Member</button>';
     }
     h += '</td></tr>';
   });
@@ -909,6 +1032,7 @@ function postCard(p, interactive) {
   h += '<span>' + esc(fmtDate(p.created)) + '</span><span class="pill">' + esc(p.visibility || 'members') + '</span>';
   if (!interactive) h += '<span>' + likes.length + ' reactions</span><span>' + pcs.length + ' answers</span>';
   h += '</div><div class="post-body">' + esc(p.body) + '</div>';
+  if (p.image) h += '<div class="post-image-wrap"><img class="post-image" src="' + esc(p.image) + '" alt=""></div>';
   if (interactive) {
     h += '<div class="post-actions"><button class="btn s o" data-act="like" data-id="' + esc(p.id) + '">' + (liked ? '♥' : '♡') + ' ' + likes.length + '</button><span style="color:var(--muted);font-size:.85rem">' + pcs.length + ' comments</span>';
     if (p.user_id === currentUser.id || isAdmin()) h += '<button class="btn s d" data-act="delPost" data-id="' + esc(p.id) + '">Delete</button>';
@@ -916,7 +1040,8 @@ function postCard(p, interactive) {
   }
   pcs.forEach((c) => { h += '<div class="comment"><div class="who">' + esc(publicName(c.user_id)) + ' ' + roleBadge(getProfile(c.user_id)) + '</div><div>' + esc(c.body) + '</div></div>'; });
   if (interactive && isApproved()) {
-    h += '<div class="bar" style="margin-top:12px;margin-bottom:0"><input placeholder="Comment..." data-cmt-input="' + esc(p.id) + '"><button class="btn s" data-act="cmtSend" data-id="' + esc(p.id) + '">Comment</button></div>';
+    h += '<div class="bar" style="margin-top:12px;margin-bottom:0"><input placeholder="Write an answer..." data-cmt-input="' + esc(p.id) + '"><button class="btn s" data-act="cmtSend" data-id="' + esc(p.id) + '">Answer</button></div>';
+    h += '<p class="rq-note" style="margin-top:8px">No patient or personal data. You are responsible for what you post.</p>';
   }
   return h + '</div>';
 }
@@ -925,18 +1050,29 @@ function pageFeed() {
   const q = (window._feedQ || '').toLowerCase();
   const posts = getPosts().filter(canSeePost).filter((p) => !q || (p.title || '').toLowerCase().indexOf(q) > -1 || (p.body || '').toLowerCase().indexOf(q) > -1);
   let h = '<h1>' + (isAdmin() ? 'All Questions (admin)' : 'Member Questions') + '</h1><p class="sub">' + (isAdmin() ? 'You see every question, including private and official.' : 'Only questions from members. You can answer them here.') + '</p>' +
+    communityDisclaimer() +
     '<div class="bar"><input class="search-bar" id="feedSearch" placeholder="Search..." value="' + esc(window._feedQ || '') + '"><button class="btn s o" data-act="refresh">Refresh</button></div>' + accessBanner();
   if (!posts.length) return h + '<div class="card empty">No questions yet.</div>';
   return h + posts.map((p) => postCard(p, true)).join('');
 }
 
 function pageNewPost() {
-  if (!isApproved()) return '<h1>Ask a Question</h1>' + accessBanner();
+  if (!isApproved()) return '<h1>Post your question</h1>' + accessBanner() + privacyFooter();
   let vis = '<div class="vis-row"><label><input type="radio" name="vis" value="members" checked> All members</label>';
   if (isOfficial()) vis += '<label><input type="radio" name="vis" value="official"> Official only</label>';
   vis += '<label><input type="radio" name="vis" value="private"> Only me</label></div>';
-  return '<h1>Ask a Question</h1><p class="sub">' + (isAdmin() ? 'Admin post — members only see questions from members.' : 'Your question is visible to other members.') + '</p>' +
-    '<div class="card"><div class="auth-field"><label>Title</label><input id="npTitle" placeholder="Title"></div><div class="auth-field"><label>Details</label><textarea id="npBody" rows="5"></textarea></div>' + vis + '<button class="btn" data-act="post">Post question</button></div>';
+  let h = '<h1>Post your question</h1><p class="sub">' + (isAdmin() ? 'Admin post — members only see questions from members unless visibility allows.' : 'Share a professional question. Optional image. No patient or personal data.') + '</p>';
+  h += communityDisclaimer();
+  h += '<div class="card"><div class="auth-field"><label>Title</label><input id="npTitle" placeholder="Short title"></div>' +
+    '<div class="auth-field"><label>Details</label><textarea id="npBody" rows="5" placeholder="Describe the issue without patient names or identifiers..."></textarea></div>' +
+    '<div class="auth-field"><label>Image (optional)</label>' +
+    '<input type="file" id="npImage" accept="image/*"><p class="rq-note">JPG/PNG, max ~800 KB. No patient photos or IDs.</p>' +
+    '<div id="npImagePreview" class="np-preview" style="display:none"></div></div>' +
+    vis +
+    '<p class="rq-note">By posting you accept responsibility for your content. Admins are not liable for member posts.</p>' +
+    '<button class="btn" data-act="post">Post question</button></div>';
+  h += privacyFooter();
+  return h;
 }
 
 function pageSeeAll() {
@@ -961,43 +1097,62 @@ function chatInputBar(to, placeholder) {
 }
 
 function pageChat() {
-  if (!isApproved()) return '<h1>Admin Chat</h1>' + accessBanner();
+  if (!isApproved()) return '<h1>Message Admin</h1>' + accessBanner() + privacyFooter();
   const refresh = '<button class="btn s o" data-act="refresh">Refresh</button>';
 
   if (!isAdmin()) {
+    // Members / Premium / Verified / Official: only Message Admin — no peer chat
     const admin = primaryAdmin();
-    let h = '<h1>Chat with Admin</h1><p class="sub">Sirf admin se. Doosre members se chat nahi.</p><div class="bar">' + refresh + '</div><div class="card"><div class="chat-box">';
-    if (!admin) return h + '<div class="empty">Admin abhi available nahi.</div></div></div>';
+    let h = '<h1>Message Admin</h1><p class="sub">Private support with Alaric admin only. Member-to-member chat is not available.</p><div class="bar">' + refresh + '</div>';
+    h += '<div class="card"><div class="chat-box">';
+    if (!admin) return h + '<div class="empty">Admin is not available yet.</div></div></div>' + privacyFooter();
     const msgs = threadMsgs(currentUser.id);
-    h += msgs.length ? msgs.map((m) => chatBubble(m)).join('') : '<div class="empty">Abhi koi message nahi.</div>';
-    return h + '</div>' + chatInputBar(admin.id, 'Message admin...') + '</div>';
+    h += msgs.length ? msgs.map((m) => chatBubble(m)).join('') : '<div class="empty">No messages yet. Send a note below — no patient data.</div>';
+    return h + '</div>' + chatInputBar(admin.id, 'Message admin (no patient data)...') + '</div>' + privacyFooter();
   }
 
-  // admin view: approved members + anyone who already wrote to us (e.g. service requests)
+  // Owner + Super Admin: chat with any member
   const members = getProfiles().filter((p) => !isAdminProfile(p) && (p.status === 'approved' || threadMsgs(p.id).length));
   if (!window._chatWith || !members.some((p) => p.id === window._chatWith)) window._chatWith = members[0] && members[0].id;
-  let h = '<h1>Member Chat</h1><p class="sub">Aap kisi bhi member se alag chat kar sakte ho. Members ek doosre se nahi.</p><div class="bar">' + refresh + '</div>';
+  let h = '<h1>Member Chat</h1><p class="sub">Only Owner and Super Admin can open chats. Members cannot message each other.</p><div class="bar">' + refresh + '</div>';
   h += '<div style="display:grid;grid-template-columns:minmax(180px,240px) 1fr;gap:12px" class="chat-grid"><div class="card" style="margin:0;max-height:520px;overflow:auto">';
-  if (!members.length) h += '<p class="empty">Koi member nahi.</p>';
-  members.forEach((p) => { h += '<button class="nav' + (p.id === window._chatWith ? ' on' : '') + '" data-act="chatPick" data-id="' + esc(p.id) + '" style="margin-bottom:4px">' + esc(fullName(p)) + '</button>'; });
+  if (!members.length) h += '<p class="empty">No members yet.</p>';
+  members.forEach((p) => {
+    h += '<button class="nav' + (p.id === window._chatWith ? ' on' : '') + '" data-act="chatPick" data-id="' + esc(p.id) + '" style="margin-bottom:4px">' +
+      esc(fullName(p)) + ' ' + roleBadge(p) + '</button>';
+  });
   h += '</div><div class="card" style="margin:0"><div class="chat-box">';
-  if (!window._chatWith) h += '<div class="empty">Member select karo.</div>';
+  if (!window._chatWith) h += '<div class="empty">Select a member.</div>';
   else {
     const msgs = threadMsgs(window._chatWith);
-    h += msgs.length ? msgs.map((m) => chatBubble(m)).join('') : '<div class="empty">Is member se abhi koi message nahi.</div>';
+    h += msgs.length ? msgs.map((m) => chatBubble(m)).join('') : '<div class="empty">No messages with this member yet.</div>';
   }
   h += '</div>' + (window._chatWith ? chatInputBar(window._chatWith, 'Message member...') : '') + '</div></div>';
   return h;
 }
 
 function pageProfile() {
-  const p = getProfile(currentUser.id) || {}, letter = (currentUser.first || '?')[0].toUpperCase();
-  const field = (label, val) => '<div class="auth-field"><label>' + label + '</label><input value="' + esc(val) + '" disabled style="opacity:.7"></div>';
-  return '<h1>My Profile</h1><div class="card" style="max-width:480px">' +
-    (p.photo ? '<img class="profile-photo" src="' + esc(p.photo) + '" alt="">' : '<div class="profile-photo-ph">' + esc(letter) + '</div>') +
-    '<label class="photo-btn">Change photo<input type="file" id="photoInput" accept="image/*"></label>' +
-    '<div style="margin-bottom:12px">' + roleBadge(p.role ? p : { role, status }) + '</div>' +
-    field('Name', fullName(currentUser)) + field('Email', currentUser.email) + field('Specialty', currentUser.specialty) + field('Role', role) + '</div>';
+  const me = getProfile(currentUser.id) || currentUser;
+  const letter = (currentUser.first || '?')[0].toUpperCase();
+  const joined = joinedAt(me);
+  const joinedStr = joined ? joined.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '—';
+  let h = '<h1>My Profile</h1><p class="sub">Professional profile only. Do not add phone, home address, or patient information.</p>';
+  h += '<div class="card profile-card">';
+  h += me.photo
+    ? '<img class="profile-photo" src="' + esc(me.photo) + '" alt="">'
+    : '<div class="profile-photo-ph">' + esc(letter) + '</div>';
+  h += '<label class="photo-btn">Change photo<input type="file" id="photoInput" accept="image/*"></label>';
+  h += '<div style="margin:8px 0 14px">' + roleBadge(me) + '</div>';
+  h += field('Name', fullName(currentUser)) + field('Email', currentUser.email) + field('Specialty', currentUser.specialty || '—') + field('Member since', joinedStr);
+  h += '<div class="auth-field" style="margin-top:16px"><label>Professional bio (optional)</label>' +
+    '<textarea id="bioInput" rows="3" maxlength="300" placeholder="e.g. Family medicine · focus on RCM & patient access. No personal contact details.">' + esc(me.bio || '') + '</textarea>' +
+    '<p class="rq-note">Max 300 characters. No phone, address, or patient data.</p></div>';
+  h += '<button class="btn" data-act="saveBio">Save bio</button></div>';
+  h += privacyFooter();
+  return h;
+}
+function field(label, val) {
+  return '<div class="rq-row"><b>' + label + '</b><span>' + esc(val || '—') + '</span></div>';
 }
 
 /* ---------- Actions (one place, used through event delegation) ---------- */
@@ -1029,18 +1184,37 @@ const ACTIONS = {
   ics: (id) => downloadIcs(id),
 
   approve: (id) => changeAccess(id, { status: 'approved' }, 'Approved'),
-  reject: (id) => changeAccess(id, { status: 'rejected', role: 'member' }, 'Rejected', 'Reject this member?'),
+  reject: (id) => changeAccess(id, { status: 'rejected', role: 'member', tier: 'member', verify_requested: false }, 'Rejected', 'Reject this member?'),
   makeOfficial: (id) => changeAccess(id, { role: 'official', status: 'approved' }, 'Official granted'),
-  makeAdmin: (id) => changeAccess(id, { role: 'admin', status: 'approved' }, 'Admin granted', 'Give FULL admin access to this member? They will see every question and private chat.'),
-  makeMember: (id) => changeAccess(id, { role: 'member', status: 'approved' }, 'Set to Member'),
+  makeAdmin: (id) => changeAccess(id, { role: 'admin', status: 'approved' }, 'Admin granted', 'Give FULL admin access?'),
+  makeSuperAdmin: (id) => changeAccess(id, { role: 'super_admin', status: 'approved' }, 'Super Admin granted', 'They will get chat access like Owner. Continue?'),
+  makeVerified: (id) => changeAccess(id, { tier: 'verified', status: 'approved', verify_requested: false, role: 'member' }, 'Verified badge granted'),
+  makePremium: (id) => changeAccess(id, { tier: 'premium', status: 'approved', role: 'member' }, 'Premium granted'),
+  makeMember: (id) => changeAccess(id, { role: 'member', status: 'approved', tier: 'member' }, 'Reset to Member'),
+
+  applyVerify: async () => {
+    const me = getProfile(currentUser.id);
+    if (!isEligibleForVerify(me)) return toast('Not eligible yet (need 1 month)', 'error');
+    if (await saveProfile({ id: currentUser.id, verify_requested: true })) {
+      toast('Verification request sent to admin');
+      render();
+    }
+  },
+  saveBio: async () => {
+    const bio = (($('bioInput') && $('bioInput').value) || '').trim().slice(0, 300);
+    if (await saveProfile({ id: currentUser.id, bio })) toast('Bio saved');
+    render();
+  },
 
   post: async (id, btn) => {
     const title = ($('npTitle').value || '').trim(), body = ($('npBody').value || '').trim();
     const vis = (document.querySelector('input[name=vis]:checked') || {}).value || 'members';
     if (!title || !body) return toast('Title and details required', 'error');
     btn.disabled = true;
-    const r = await addRecord('posts', { user_id: currentUser.id, title, body, visibility: vis });
+    let image = window._npImageData || '';
+    const r = await addRecord('posts', { user_id: currentUser.id, title, body, image, visibility: vis });
     btn.disabled = false;
+    window._npImageData = '';
     if (r) { toast('Posted'); goTo('feed'); }
   },
   like: async (id) => { await toggleLike(id, currentUser.id); render(); },
@@ -1106,15 +1280,33 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('change', (e) => {
-  if (e.target.id !== 'photoInput') return;
-  const f = e.target.files && e.target.files[0];
-  if (!f) return;
-  if (f.size > 900000) return toast('Image too large (max ~900 KB)', 'error');
-  const r = new FileReader();
-  r.onload = async () => {
-    if (await saveProfile({ id: currentUser.id, photo: r.result })) { toast('Photo updated'); render(); }
-  };
-  r.readAsDataURL(f);
+  if (e.target.id === 'photoInput') {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    if (f.size > 900000) return toast('Image too large (max ~900 KB)', 'error');
+    const r = new FileReader();
+    r.onload = async () => {
+      if (await saveProfile({ id: currentUser.id, photo: r.result })) { toast('Photo updated'); render(); }
+    };
+    r.readAsDataURL(f);
+    return;
+  }
+  if (e.target.id === 'npImage') {
+    const f = e.target.files && e.target.files[0];
+    window._npImageData = '';
+    const prev = $('npImagePreview');
+    if (!f) { if (prev) { prev.style.display = 'none'; prev.innerHTML = ''; } return; }
+    if (f.size > 800000) return toast('Image too large (max ~800 KB)', 'error');
+    const r = new FileReader();
+    r.onload = () => {
+      window._npImageData = r.result;
+      if (prev) {
+        prev.style.display = 'block';
+        prev.innerHTML = '<img src="' + r.result + '" alt="preview" style="max-width:100%;max-height:220px;border-radius:12px">';
+      }
+    };
+    r.readAsDataURL(f);
+  }
 });
 
 /* ---------- Password recovery (reset link opens the app with a recovery session) ---------- */
@@ -1195,7 +1387,7 @@ function injectPolish() {
     '.alaric-modal-box{width:100%;max-width:400px;background:var(--card,#111827);border:1px solid var(--border,rgba(255,255,255,.15));border-radius:14px;padding:24px}' +
     '.alaric-modal-msg{color:#f87171;font-size:.85rem;min-height:1.2em;margin:8px 0}' +
     '@media(max-width:720px){.rq-grid{grid-template-columns:1fr}.rq-row{flex-direction:column;gap:0}.chat-grid{grid-template-columns:1fr!important}.stats{grid-template-columns:repeat(2,1fr)!important}}' +
-    '@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}';
+    '.mh-hero{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:22px 22px;margin-bottom:18px;background:linear-gradient(135deg,rgba(212,175,55,.12),rgba(45,212,191,.06));border:1px solid rgba(212,175,55,.22);border-radius:18px}' +'.mh-kicker{font-size:.7rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#E8C547;margin-bottom:6px}' +'.mh-hero-badge{width:56px;height:56px;border-radius:16px;background:linear-gradient(145deg,#E8C547,#A68B2A);color:#1a1408;display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:800;flex-shrink:0;box-shadow:0 8px 24px rgba(212,175,55,.25)}' +'.mh-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:18px 0}' +'.mh-tile{display:flex;align-items:center;gap:14px;text-align:left;padding:16px 18px;border-radius:14px}' +'.mh-tile-icon{font-size:1.25rem;opacity:.9}' +'.mh-tile b{display:block;font-size:.95rem}' +'.mh-tile small{display:block;font-weight:500;opacity:.75;font-size:.78rem;margin-top:2px}' +'.verify-card{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;border-color:rgba(212,175,55,.35)!important;background:linear-gradient(90deg,rgba(212,175,55,.1),transparent)}' +'.verify-card.pending{border-color:rgba(251,191,36,.3)!important}' +'.premium-strip{display:flex;gap:14px;align-items:center;flex-wrap:wrap;background:linear-gradient(90deg,rgba(212,175,55,.14),rgba(45,212,191,.06));border:1px solid rgba(212,175,55,.28)}' +'.premium-strip b{color:#E8C547}' +'.premium-strip span{color:var(--muted);font-size:.88rem}' +'.priv-bar,.disc-bar{display:flex;gap:12px;border-radius:14px;padding:12px 14px;font-size:.82rem;margin-top:22px;line-height:1.45}' +'.priv-bar{background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);color:#99f6e4}' +'.disc-bar{background:rgba(212,175,55,.08);border:1px solid rgba(212,175,55,.2);color:#fde68a;margin-bottom:14px}' +'.post-image-wrap{margin:12px 0;border-radius:14px;overflow:hidden;border:1px solid var(--border)}' +'.post-image{display:block;max-width:100%;max-height:360px;object-fit:contain;background:#000}' +'.np-preview{margin-top:10px}' +'.profile-card{max-width:520px}' +'.badge-role.premium{background:rgba(212,175,55,.18);color:#E8C547}' +'@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}';
   document.head.appendChild(s);
 }
 
