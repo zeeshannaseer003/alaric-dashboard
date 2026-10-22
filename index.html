@@ -92,5 +92,137 @@ h1{font-size:1.85rem;font-weight:750;letter-spacing:-.03em;margin-bottom:4px}
 .badge-role.official{background:rgba(129,140,248,.16);color:#c7d2fe}
 .badge-role.member{background:#16313a;color:var(--muted)}
 .badge-role.premium{background:rgba(212,175,55,.18);color:#E8C547}
-.badge-role.verified{background:rgba(45,212,191,.16);color:#5EEAD4}
-.profile-photo{width:96px;height:96px;border-radius:50%;border:3px solid rgba(
+.profile-photo{width:96px;height:96px;border-radius:50%;border:3px solid rgba(45,212,191,.35);margin-bottom:12px}
+.profile-photo-ph{width:96px;height:96px;border-radius:50%;background:linear-gradient(145deg,var(--p),var(--p-2));display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:800;color:#1a1408;margin-bottom:12px}
+.photo-btn{display:inline-block;cursor:pointer;color:var(--p);font-size:.85rem;font-weight:700;margin-bottom:14px}
+.photo-btn input{display:none}
+.post-title{font-weight:700;font-size:1.08rem;letter-spacing:-.02em;margin-bottom:8px}
+.post-meta,.comment .who,.chat-msg .who{font-size:.8rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.post-meta{margin-bottom:12px}
+.post-body{color:#e7f5f2;line-height:1.65;margin-bottom:14px;white-space:pre-wrap}
+.post-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.comment{background:#07141b;border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin:10px 0}
+.bar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
+.bar input,.search-bar{margin:0;flex:1;min-width:140px}
+.search-bar{max-width:420px;margin-bottom:0}
+.priv{display:flex;gap:12px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.22);border-radius:16px;padding:14px 16px;font-size:.84rem;color:#fde68a;margin-top:28px}
+.toast{position:fixed;bottom:24px;right:24px;background:#0e1c24;border:1px solid rgba(45,212,191,.35);border-radius:14px;padding:14px 18px;font-size:.9rem;font-weight:650;box-shadow:var(--shadow);z-index:1000;max-width:360px}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{width:100%;border-collapse:collapse;font-size:.9rem;min-width:640px}
+th,td{padding:12px 12px;text-align:left;border-bottom:1px solid var(--border);vertical-align:middle}
+th{color:var(--muted);font-size:.7rem;text-transform:uppercase;letter-spacing:.05em}
+tr:hover td{background:rgba(45,212,191,.04)}
+.empty{text-align:center;padding:36px 12px;color:var(--muted)}
+.chat-box{max-height:420px;overflow-y:auto;margin-bottom:12px}
+.chat-msg{padding:10px 14px;background:#07141b;border:1px solid var(--border);border-radius:12px;margin-bottom:8px}
+.vis-row{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.vis-row label{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.9rem;margin:0}
+.pending-banner{background:var(--warn-bg);border:1px solid rgba(251,191,36,.28);color:#fde68a;border-radius:16px;padding:14px 16px;margin-bottom:16px;font-size:.9rem}
+@media(max-width:900px){.main{padding:28px 22px}.side{width:230px}}
+@media(max-width:768px){
+  .auth-screen{align-items:flex-start;padding-top:max(20px,env(safe-area-inset-top))}
+  .auth-box{padding:26px 18px;border-radius:20px}
+  .auth-row{grid-template-columns:1fr}
+  .app.show{flex-direction:column}
+  .side{width:100%;height:auto;position:sticky;top:0;z-index:40;flex-direction:row;flex-wrap:nowrap;align-items:center;padding:10px 10px;padding-top:max(10px,env(safe-area-inset-top));gap:6px;border-right:0;border-bottom:1px solid var(--border);overflow-x:auto}
+  .logo,.user-info{display:none}
+  .nav{width:auto;flex-shrink:0;white-space:nowrap;padding:9px 12px;border-radius:99px}
+  .logout-btn{display:block;margin:0 0 0 auto;flex-shrink:0;padding:9px 12px;white-space:nowrap;border-radius:99px}
+  .main{padding:18px 14px 32px;max-width:100%}
+  h1{font-size:1.4rem}
+  .stats{grid-template-columns:1fr 1fr}
+  .bar{flex-direction:column;align-items:stretch}
+  .bar input,.bar button,.search-bar{width:100%;max-width:none}
+  .toast{left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom));max-width:none}
+  .chat-grid{grid-template-columns:1fr !important}
+}
+@media(max-width:400px){.stats{grid-template-columns:1fr}}
+@media(min-width:1200px){.main{padding:44px 56px}}
+.logo{align-items:center}
+.logo-kicker{font-size:.68rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#E8C547;margin-top:1px}
+.side.is-admin{border-right-color:rgba(251,191,36,.28)}
+.side.is-admin .logo-kicker{color:#fbbf24}
+.nav-sec{margin:14px 12px 6px;font-size:.68rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#6f8b84}
+.admin-top{display:flex;align-items:center;justify-content:space-between;gap:12px;background:linear-gradient(90deg,rgba(251,191,36,.14),rgba(45,212,191,.08));border:1px solid rgba(251,191,36,.28);border-radius:16px;padding:14px 16px;margin-bottom:18px}
+.admin-top b{display:block;font-size:1rem}
+.admin-top span{color:var(--muted);font-size:.82rem}
+@media(max-width:768px){.nav-sec{display:none}.admin-top{align-items:flex-start}.admin-top span{display:block}}
+.mh-hero{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:22px;margin-bottom:18px;background:linear-gradient(135deg,rgba(212,175,55,.12),rgba(45,212,191,.06));border:1px solid rgba(212,175,55,.22);border-radius:18px}
+.mh-kicker{font-size:.7rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#E8C547;margin-bottom:6px}
+.mh-hero-badge{width:56px;height:56px;border-radius:16px;background:linear-gradient(145deg,#E8C547,#A68B2A);color:#1a1408;display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:800;flex-shrink:0;box-shadow:0 8px 24px rgba(212,175,55,.25)}
+.mh-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:18px 0}
+.mh-tile{display:flex;align-items:center;gap:14px;text-align:left;padding:16px 18px;border-radius:14px}
+.mh-tile-icon{font-size:1.25rem;opacity:.9}
+.mh-tile b{display:block;font-size:.95rem}
+.mh-tile small{display:block;font-weight:500;opacity:.75;font-size:.78rem;margin-top:2px}
+.verify-card{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;border-color:rgba(212,175,55,.35)!important;background:linear-gradient(90deg,rgba(212,175,55,.1),transparent)}
+.premium-strip{display:flex;gap:14px;align-items:center;flex-wrap:wrap;background:linear-gradient(90deg,rgba(212,175,55,.14),rgba(45,212,191,.06));border:1px solid rgba(212,175,55,.28)}
+.premium-strip b{color:#E8C547}
+.priv-bar,.disc-bar{display:flex;gap:12px;border-radius:14px;padding:12px 14px;font-size:.82rem;margin-top:22px;line-height:1.45}
+.priv-bar{background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);color:#99f6e4}
+.disc-bar{background:rgba(212,175,55,.08);border:1px solid rgba(212,175,55,.2);color:#fde68a;margin-bottom:14px}
+.post-image-wrap{margin:12px 0;border-radius:14px;overflow:hidden;border:1px solid var(--border)}
+.post-image{display:block;max-width:100%;max-height:360px;object-fit:contain;background:#000}
+.ps-h2{font-size:1.15rem;font-weight:700;margin:20px 0 12px}
+</style>
+</head>
+<body>
+<div class="auth-screen" id="authScreen">
+  <div class="auth-box">
+    <div class="auth-logo"><div class="auth-logo-icon">A</div><span>Alaric</span></div>
+    <p class="auth-sub">Health provider community</p>
+    <div class="auth-tabs" id="authTabs">
+      <button class="on" data-tab="login">Login</button>
+      <button data-tab="signup">Create Account</button>
+    </div>
+    <div class="auth-error" id="authError"></div>
+    <div class="auth-success" id="authSuccess"></div>
+    <div id="loginForm">
+      <div class="auth-field"><label>Email</label><input type="email" id="loginId" placeholder="you@example.com" autocomplete="email"></div>
+      <div class="auth-field"><label>Password</label>
+        <div class="pw-wrap"><input type="password" id="loginPw" placeholder="Enter password" autocomplete="current-password"><button type="button" class="pw-toggle" data-target="loginPw">Show</button></div>
+      </div>
+      <div class="auth-links"><button type="button" class="link" id="forgotLink">Forgot password?</button></div>
+      <button class="auth-btn" id="loginBtn">Login</button>
+    </div>
+    <div id="forgotForm" style="display:none">
+      <p class="auth-sub" style="margin-bottom:16px;text-align:left">Enter your account email for a reset link.</p>
+      <div class="auth-field"><label>Email</label><input type="email" id="fpId" placeholder="you@example.com"></div>
+      <button class="auth-btn" id="resetBtn">Send Reset Link</button>
+      <button class="auth-btn o" id="backToLogin">Back to Login</button>
+    </div>
+    <div id="signupForm" style="display:none">
+      <div class="auth-row">
+        <div class="auth-field"><label>First Name</label><input type="text" id="suFirst" placeholder="First name"></div>
+        <div class="auth-field"><label>Last Name</label><input type="text" id="suLast" placeholder="Last name"></div>
+      </div>
+      <div class="auth-field"><label>Email</label><input type="email" id="suId" placeholder="you@example.com" autocomplete="email"></div>
+      <div class="auth-field"><label>Password</label>
+        <div class="pw-wrap"><input type="password" id="suPw" placeholder="Strong password" autocomplete="new-password"><button type="button" class="pw-toggle" data-target="suPw">Show</button></div>
+        <div class="pw-strength"><div class="pw-strength-bar" id="pwBar"></div></div>
+        <div class="pw-hint" id="pwHint">Min 8 chars, number &amp; symbol</div>
+      </div>
+      <div class="auth-field"><label>Medical Specialty</label>
+        <select id="suSpec">
+          <option value="">Select specialty</option>
+          <option>Cardiology</option><option>Internal Medicine</option><option>Mental Health / Psychiatry</option>
+          <option>Family Medicine</option><option>Emergency Medicine</option><option>Pediatrics</option>
+          <option>Dermatology</option><option>Orthopedic Surgery</option><option>Neurology</option>
+          <option>Obstetrics and Gynecology</option><option>Oncology</option><option>Radiology</option>
+          <option>Anesthesiology</option><option>General Surgery</option><option>Medical Coding / Billing</option><option>Other</option>
+        </select>
+      </div>
+      <button class="auth-btn" id="signupBtn">Create Account</button>
+    </div>
+    <div class="real-badge">Alaric Health Services</div>
+  </div>
+</div>
+<div class="app" id="app">
+  <aside class="side" id="side"></aside>
+  <main class="main"><div id="c"></div>
+    <div class="priv"><span>🔒</span><div><b>Privacy.</b> No personal or patient information is collected here. Do not share personal details with anyone. Members see member questions only — admin tools stay with admins.</div></div>
+  </main>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
