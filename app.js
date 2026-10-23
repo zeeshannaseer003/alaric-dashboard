@@ -521,6 +521,7 @@ function render(opts) {
       h += '</button>';
     });
   });
+  h += '<button class="theme-btn" data-act="toggleTheme">' + (document.documentElement.classList.contains('dark') ? '☀ Light mode' : '🌙 Dark mode') + '</button>';
   h += '<button class="logout-btn" data-act="logout">Logout</button>';
 
   const side = $('side');
@@ -1187,6 +1188,11 @@ async function changeAccess(id, patch, doneMsg, confirmMsg) {
 const ACTIONS = {
   nav: (id) => goTo(id),
   logout: () => logout(),
+  toggleTheme: () => {
+    const dark = document.documentElement.classList.toggle('dark');
+    try { localStorage.setItem('alaric_theme', dark ? 'dark' : 'light'); } catch (e) {}
+    render({ keepScroll: true });
+  },
   refresh: async () => { await loadAllData(currentUser.id); toast('Refreshed'); render(); },
   toggle: (id, el) => {
     const d = $(id);
