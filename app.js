@@ -147,8 +147,8 @@ const TABLES = {
   profiles: {
     table: 'profiles',
     // photo is NOT selected here on purpose (big base64); own photo is loaded separately
-    cols: '*',
-    from: (p) => ({ id: p.id, email: p.email, first: p.first_name, last: p.last_name, specialty: p.specialty, role: p.role || 'member', status: p.status || 'pending', bio: p.bio || '', tier: p.tier || 'member', verify_requested: !!p.verify_requested, photo: p.photo || '', created: p.created_at })
+    cols: 'id,email,first_name,last_name,specialty,role,status,bio,tier,verify_requested,created_at',
+    from: (p) => ({ id: p.id, email: p.email, first: p.first_name, last: p.last_name, specialty: p.specialty, role: p.role || 'member', status: p.status || 'pending', bio: p.bio || '', tier: p.tier || 'member', verify_requested: !!p.verify_requested, photo: '', created: p.created_at })
   },
   posts: {
     table: 'posts', order: ['created_at', false],
@@ -230,7 +230,7 @@ async function saveProfile(patch, opts) {
   if (!useCloud) { saveLocal('profiles'); return true; }
 
   const row = { id: patch.id };
-  Object.keys(PROFILE_COLS).forEach((k) => { if (k in patch) row[PROFILE_COLS[k]] = patch[k] || null; });
+  Object.keys(PROFILE_COLS).forEach((k) => { if (k in patch) row[PROFILE_COLS[k]] = patch[k] == null || patch[k] === '' ? null : patch[k]; });
   if (isNew) { row.role = merged.role || 'member'; row.status = merged.status || 'pending'; }
 
   const r = await sb.from('profiles').upsert(row, { onConflict: 'id', ignoreDuplicates: !!opts.createOnly });
@@ -362,11 +362,24 @@ async function enterApp(user) {
       await saveProfile({ id: currentUser.id, role: 'admin', status: 'approved' });
     }
 
-    page = null;
+    // Force owner email → admin every time (dashboard must open)
+    if (isAdminEmail(currentUser.email)) {
+      currentUser.role = 'admin';
+      currentUser.status = 'approved';
+      role = 'admin';
+      status = 'approved';
+    }
+    page = isAdmin() ? 'seeAll' : 'home';
     $('authScreen').style.display = 'none';
     $('app').classList.add('show');
-    render({ keepScroll: false });
-    toast('Welcome, ' + currentUser.first + (isAdmin() ? (useCloud ? ' · live shared mode' : ' · local mode (run supabase-setup.sql)') : '') + '!');
+    try {
+      render({ keepScroll: false });
+    } catch (err) {
+      console.error('enterApp render', err);
+      const main = $('c');
+      if (main) main.innerHTML = '<div class="card"><b>Loaded with limited view.</b> ' + esc(err.message || String(err)) + '</div>';
+    }
+    toast('Welcome, ' + currentUser.first + (isAdmin() ? (useCloud ? ' · Admin' : ' · Admin (local)') : '') + '!');
   } finally { entering = false; }
 }
 
@@ -515,9 +528,14 @@ function render(opts) {
   side.innerHTML = h;
 
   const top = isAdmin() ? '<div class="admin-top"><div><b>Admin panel</b><span>Full access · members, questions, private chats</span></div><span class="pill warn">Admin</span></div>' : '';
-  main.innerHTML = top + PAGES[page].fn();
+  try {
+    main.innerHTML = top + PAGES[page].fn();
+  } catch (err) {
+    console.error('render page', page, err);
+    main.innerHTML = top + '<div class="card empty"><b>Page error.</b> ' + esc(err && err.message ? err.message : String(err)) + '<div style="margin-top:12px"><button class="btn s" data-act="nav" data-id="profile">Open Profile</button> <button class="btn s o" data-act="refresh">Refresh</button></div></div>';
+  }
 
-  if (keep) { main.scrollTop = st; window.scrollTo(0, sy); }
+  if (keep) { try { main.scrollTop = st; window.scrollTo(0, sy); } catch (e) {} }
   const cb = document.querySelector('.chat-box');
   if (cb) cb.scrollTop = cb.scrollHeight;
 }
