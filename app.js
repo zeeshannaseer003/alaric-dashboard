@@ -147,13 +147,13 @@ const TABLES = {
   profiles: {
     table: 'profiles',
     // photo is NOT selected here on purpose (big base64); own photo is loaded separately
-    cols: 'id,email,first_name,last_name,specialty,role,status,bio,tier,verify_requested,created_at',
-    from: (p) => ({ id: p.id, email: p.email, first: p.first_name, last: p.last_name, specialty: p.specialty, role: p.role || 'member', status: p.status || 'pending', bio: p.bio || '', tier: p.tier || 'member', verify_requested: !!p.verify_requested, photo: '', created: p.created_at })
+    cols: 'id,email,first_name,last_name,specialty,role,status,created_at',
+    from: (p) => ({ id: p.id, email: p.email, first: p.first_name, last: p.last_name, specialty: p.specialty, role: p.role || 'member', status: p.status || 'pending', photo: p.photo || '', created: p.created_at })
   },
   posts: {
     table: 'posts', order: ['created_at', false],
-    from: (p) => ({ id: p.id, user_id: p.user_id, title: p.title, body: p.body, image: p.image || '', visibility: p.visibility || 'members', created: p.created_at }),
-    to: (p) => ({ user_id: p.user_id, title: p.title, body: p.body, image: p.image || null, visibility: p.visibility || 'members' })
+    from: (p) => ({ id: p.id, user_id: p.user_id, title: p.title, body: p.body, visibility: p.visibility || 'members', created: p.created_at }),
+    to: (p) => ({ user_id: p.user_id, title: p.title, body: p.body, visibility: p.visibility || 'members' })
   },
   comments: {
     table: 'comments', order: ['created_at', true],
@@ -215,7 +215,7 @@ const getLikes = () => cache.likes;
 const getChat = () => cache.chat;
 
 /* profile save: sends ONLY the fields you pass; rolls back cache if the DB refuses */
-const PROFILE_COLS = { email: 'email', first: 'first_name', last: 'last_name', specialty: 'specialty', role: 'role', status: 'status', photo: 'photo', bio: 'bio', tier: 'tier', verify_requested: 'verify_requested' };
+const PROFILE_COLS = { email: 'email', first: 'first_name', last: 'last_name', specialty: 'specialty', role: 'role', status: 'status', photo: 'photo' };
 
 async function saveProfile(patch, opts) {
   opts = opts || {};
@@ -230,7 +230,7 @@ async function saveProfile(patch, opts) {
   if (!useCloud) { saveLocal('profiles'); return true; }
 
   const row = { id: patch.id };
-  Object.keys(PROFILE_COLS).forEach((k) => { if (k in patch) row[PROFILE_COLS[k]] = patch[k] == null || patch[k] === '' ? null : patch[k]; });
+  Object.keys(PROFILE_COLS).forEach((k) => { if (k in patch) row[PROFILE_COLS[k]] = patch[k] || null; });
   if (isNew) { row.role = merged.role || 'member'; row.status = merged.status || 'pending'; }
 
   const r = await sb.from('profiles').upsert(row, { onConflict: 'id', ignoreDuplicates: !!opts.createOnly });
@@ -291,56 +291,23 @@ async function toggleLike(postId, userId) {
 /* ---------- Session / roles ---------- */
 let currentUser = null, role = 'member', status = 'pending', entering = false;
 
-const isOwner = () => currentUser && isAdminEmail(currentUser.email);
-const isAdmin = () => role === 'admin' || role === 'super_admin' || isOwner();
-const isSuperAdmin = () => role === 'super_admin' || isOwner();
-const isOfficial = () => isAdmin() || role === 'staff' || role === 'official';
+const isAdmin = () => role === 'admin';
+const isOfficial = () => role === 'admin' || role === 'staff' || role === 'official';
 const isApproved = () => status === 'approved' || isAdmin();
-const canUseChat = () => isAdmin(); // Owner + Super Admin only (admin role includes both)
-const memberTier = (p) => {
-  p = p || getProfile(currentUser && currentUser.id) || {};
-  if (p.role === 'admin' || isAdminEmail(p.email)) return 'admin';
-  if (p.role === 'super_admin') return 'super_admin';
-  if (p.role === 'official' || p.role === 'staff') return 'official';
-  if (p.tier === 'premium') return 'premium';
-  if (p.tier === 'verified') return 'verified';
-  return 'member';
-};
-const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
-const joinedAt = (p) => {
-  const d = new Date((p && p.created) || 0);
-  return isNaN(d) ? null : d;
-};
-const monthsOnPlatform = (p) => {
-  const j = joinedAt(p);
-  if (!j) return 0;
-  return (Date.now() - j.getTime()) / MONTH_MS;
-};
-const isEligibleForVerify = (p) => {
-  p = p || getProfile(currentUser && currentUser.id);
-  if (!p || !isApproved()) return false;
-  if (memberTier(p) === 'verified' || memberTier(p) === 'premium') return false;
-  if (p.role === 'admin' || p.role === 'super_admin' || p.role === 'official') return false;
-  return monthsOnPlatform(p) >= 1;
-};
 
 function userFromSession(user) {
   const m = user.user_metadata || {}, local = getProfile(user.id) || {}, em = user.email || '';
   let r = 'member';
   if (isAdminEmail(em)) r = 'admin';
-  else if (local.role === 'admin' || local.role === 'super_admin' || local.role === 'official' || local.role === 'staff') r = local.role;
+  else if (local.role === 'admin' || local.role === 'official' || local.role === 'staff') r = local.role;
   let st = local.status;
-  if (!st) st = (r === 'admin' || r === 'super_admin' || r === 'official') ? 'approved' : 'pending';
+  if (!st) st = (r === 'admin' || r === 'official') ? 'approved' : 'pending';
   return {
     id: user.id, email: em,
     first: m.first_name || local.first || (em ? em.split('@')[0] : 'User'),
     last: m.last_name || local.last || '',
     specialty: m.specialty || local.specialty || '',
-    role: r, status: st,
-    bio: local.bio || '',
-    tier: local.tier || 'member',
-    verify_requested: !!local.verify_requested,
-    created: local.created || null
+    role: r, status: st
   };
 }
 
@@ -362,24 +329,11 @@ async function enterApp(user) {
       await saveProfile({ id: currentUser.id, role: 'admin', status: 'approved' });
     }
 
-    // Force owner email → admin every time (dashboard must open)
-    if (isAdminEmail(currentUser.email)) {
-      currentUser.role = 'admin';
-      currentUser.status = 'approved';
-      role = 'admin';
-      status = 'approved';
-    }
-    page = isAdmin() ? 'seeAll' : 'home';
+    page = null;
     $('authScreen').style.display = 'none';
     $('app').classList.add('show');
-    try {
-      render({ keepScroll: false });
-    } catch (err) {
-      console.error('enterApp render', err);
-      const main = $('c');
-      if (main) main.innerHTML = '<div class="card"><b>Loaded with limited view.</b> ' + esc(err.message || String(err)) + '</div>';
-    }
-    toast('Welcome, ' + currentUser.first + (isAdmin() ? (useCloud ? ' · Admin' : ' · Admin (local)') : '') + '!');
+    render({ keepScroll: false });
+    toast('Welcome, ' + currentUser.first + (isAdmin() ? (useCloud ? ' · live shared mode' : ' · local mode (run supabase-setup.sql)') : '') + '!');
   } finally { entering = false; }
 }
 
@@ -393,21 +347,11 @@ function resetSession() {
 async function logout() { await sb.auth.signOut(); resetSession(); }
 
 /* ---------- Display helpers ---------- */
-
-function privacyFooter() {
-  return '<div class="priv-bar"><span>🔒</span><div><b>Privacy.</b> No personal or patient information is collected here. Do not share personal details, phone numbers, addresses, or patient data with anyone on this platform.</div></div>';
-}
-function communityDisclaimer() {
-  return '<div class="disc-bar"><b>Community guidelines.</b> Questions and answers are member opinions only — not medical, legal, or billing advice. You are solely responsible for what you post. Alaric admins are not liable for member content. Official support is only via Message Admin.</div>';
-}
 function roleBadge(p) {
   if (!p) return '<span class="badge-role member">Member</span>';
-  if (p.role === 'admin' || isAdminEmail(p.email)) return '<span class="badge-role admin">Admin</span>';
-  if (p.role === 'super_admin') return '<span class="badge-role admin">Super Admin</span>';
+  if (p.role === 'admin') return '<span class="badge-role admin">Admin</span>';
   if (p.role === 'official' || p.role === 'staff') return '<span class="badge-role official">Official</span>';
-  if (p.tier === 'premium') return '<span class="badge-role premium">★ Premium</span>';
-  if (p.tier === 'verified') return '<span class="badge-role verified">✓ Verified</span>';
-  if (p.status === 'approved') return '<span class="badge-role member">Member</span>';
+  if (p.status === 'approved') return '<span class="badge-role verified">Verified</span>';
   if (p.status === 'pending') return '<span class="badge-role pending">Pending</span>';
   if (p.status === 'rejected') return '<span class="badge-role pending">Rejected</span>';
   return '<span class="badge-role member">Member</span>';
@@ -443,7 +387,7 @@ function dmParse(body) {
   const m = /^@@to:([0-9a-fA-F-]{36})@@([\s\S]*)$/.exec(body || '');
   return m ? { to: m[1], text: m[2] } : null;
 }
-const isAdminProfile = (p) => p.role === 'admin' || p.role === 'super_admin' || isAdminEmail(p.email);
+const isAdminProfile = (p) => p.role === 'admin'; // role only: a profile email can never make someone admin
 const adminIds = () => new Set(getProfiles().filter(isAdminProfile).map((p) => p.id));
 function primaryAdmin() {
   const all = getProfiles().filter(isAdminProfile);
@@ -476,7 +420,7 @@ const PAGES = {
   home:      { label: 'Home',             fn: pageMemberHome },
   feed:      { label: () => isAdmin() ? 'All Questions' : 'Questions', fn: pageFeed },
   ask:       { label: 'Ask Question',     fn: pageNewPost },
-  chat:      { label: () => isAdmin() ? 'Member Chat' : 'Message Admin', fn: pageChat },
+  chat:      { label: () => isAdmin() ? 'Member Chat' : 'Admin Chat', fn: pageChat },
   premium:   { label: 'Premium Services', fn: pagePremiumServices },
   services:  { label: 'Services',         fn: pageAdminServices, reqs: true },
   request:   { label: 'Request',          fn: pageRequest, hidden: true },
@@ -486,6 +430,7 @@ const PAGES = {
 const NAV_ADMIN = [
   ['Control', ['seeAll', 'approvals', 'members', 'services']],
   ['Community', ['feed', 'chat']],
+  ['Services', ['premium']],
   ['Account', ['profile']]
 ];
 const NAV_MEMBER = [
@@ -493,7 +438,6 @@ const NAV_MEMBER = [
   ['Services', ['premium', 'myRequests']],
   ['Account', ['profile']]
 ];
-// chat page for members = Message Admin only (enforced in pageChat)
 
 function render(opts) {
   if (!currentUser) return;
@@ -520,7 +464,6 @@ function render(opts) {
       h += '</button>';
     });
   });
-  h += '<button class="theme-btn" data-act="toggleTheme">' + (document.documentElement.classList.contains('dark') ? '☀ Light mode' : '🌙 Dark mode') + '</button>';
   h += '<button class="logout-btn" data-act="logout">Logout</button>';
 
   const side = $('side');
@@ -528,14 +471,9 @@ function render(opts) {
   side.innerHTML = h;
 
   const top = isAdmin() ? '<div class="admin-top"><div><b>Admin panel</b><span>Full access · members, questions, private chats</span></div><span class="pill warn">Admin</span></div>' : '';
-  try {
-    main.innerHTML = top + PAGES[page].fn();
-  } catch (err) {
-    console.error('render page', page, err);
-    main.innerHTML = top + '<div class="card empty"><b>Page error.</b> ' + esc(err && err.message ? err.message : String(err)) + '<div style="margin-top:12px"><button class="btn s" data-act="nav" data-id="profile">Open Profile</button> <button class="btn s o" data-act="refresh">Refresh</button></div></div>';
-  }
+  main.innerHTML = top + PAGES[page].fn();
 
-  if (keep) { try { main.scrollTop = st; window.scrollTo(0, sy); } catch (e) {} }
+  if (keep) { main.scrollTop = st; window.scrollTo(0, sy); }
   const cb = document.querySelector('.chat-box');
   if (cb) cb.scrollTop = cb.scrollHeight;
 }
@@ -606,79 +544,39 @@ const SERVICES = [
 const SPECIALTIES = ['Behavioral Health / Psychiatry', 'Family Medicine', 'Internal Medicine', 'Pediatrics', 'Cardiology', 'Dermatology', 'Orthopedics', 'OB/GYN', 'Neurology', 'Gastroenterology', 'Physical Therapy / Rehab', 'Chiropractic', 'Dentistry', 'Urgent Care', 'Other'];
 const SVC_SEP = ' | ';
 const splitServices = (s) => String(s || '').split(SVC_SEP).map((x) => x.trim()).filter(Boolean);
-const pad2 = (n) => String(n).padStart(2, '0');
-const dtLocal = (d) => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + 'T' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
-/* Fixed business timezone: Central Time (Texas / Houston HQ) */
-const BUSINESS_TZ = 'America/Chicago';
-const BUSINESS_TZ_LABEL = 'Central Time (CST/CDT — Texas)';
-function localTz() { return BUSINESS_TZ; }
+const ET = 'America/New_York'; // all consultation times are Eastern Time
+function localTz() { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { return 'UTC'; } }
+function tzOffsetMs(date, tz) {
+  const o = {};
+  new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' })
+    .formatToParts(date).forEach((x) => { o[x.type] = x.value; });
+  return Date.UTC(+o.year, +o.month - 1, +o.day, +o.hour, +o.minute, +o.second) - Math.floor(date.getTime() / 1000) * 1000;
+}
+/* "YYYY-MM-DDTHH:mm" typed as New York time -> real UTC ISO string (handles EST/EDT) */
+function etToIso(local) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(local || '');
+  if (!m) return null;
+  const n = m.slice(1).map(Number), wall = Date.UTC(n[0], n[1] - 1, n[2], n[3], n[4]);
+  let t = wall;
+  for (let i = 0; i < 3; i++) t = wall - tzOffsetMs(new Date(t), ET);
+  return new Date(t).toISOString();
+}
+/* current New York time in datetime-local format, for the min attribute */
+function etNowLocal(plusMs) {
+  const o = {};
+  new Intl.DateTimeFormat('en-US', { timeZone: ET, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+    .formatToParts(new Date(Date.now() + (plusMs || 0))).forEach((x) => { o[x.type] = x.value; });
+  return o.year + '-' + o.month + '-' + o.day + 'T' + o.hour + ':' + o.minute;
+}
 function fmtInTz(iso, tz) {
   if (!iso) return '—';
   const d = new Date(iso);
   if (isNaN(d)) return '—';
-  const zone = tz || BUSINESS_TZ;
-  const o = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: zone };
+  const o = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' };
   try {
-    const label = zone === BUSINESS_TZ ? 'CST/CDT' : zone;
-    return d.toLocaleString('en-US', o) + ' (' + label + ')';
-  } catch (e) {
-    return d.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
-  }
-}
-/** Parse a datetime-local value as if it were entered in America/Chicago, return UTC ISO string */
-function chicagoLocalToIso(localStr) {
-  if (!localStr) return null;
-  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(localStr);
-  if (!m) return null;
-  const y = +m[1], mo = +m[2], day = +m[3], h = +m[4], mi = +m[5];
-  // Binary search UTC ms such that wall-clock in Chicago matches Y-M-D H:M, then snap to second 0
-  let lo = Date.UTC(y, mo - 1, day, h - 10, mi);
-  let hi = Date.UTC(y, mo - 1, day, h + 10, mi);
-  const target = y * 1e10 + mo * 1e8 + day * 1e6 + h * 1e4 + mi * 100;
-  let found = null;
-  for (let i = 0; i < 48; i++) {
-    const mid = Math.floor((lo + hi) / 2);
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: BUSINESS_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', hour12: false
-    }).formatToParts(new Date(mid));
-    const get = (t) => +(parts.find((p) => p.type === t) || {}).value || 0;
-    let hh = get('hour'); if (hh === 24) hh = 0;
-    const val = get('year') * 1e10 + get('month') * 1e8 + get('day') * 1e6 + hh * 1e4 + get('minute') * 100;
-    if (val === target) { found = mid; break; }
-    if (val < target) lo = mid + 1; else hi = mid - 1;
-  }
-  if (found == null) found = Math.floor((lo + hi) / 2);
-  // snap to exact minute (clear seconds/ms)
-  const snapped = new Date(found);
-  snapped.setUTCSeconds(0, 0);
-  // re-check minute; if DST edge shifted, adjust by up to 2 minutes
-  for (let adj = 0; adj < 120000; adj += 60000) {
-    for (const cand of [found - adj, found + adj]) {
-      const p = new Intl.DateTimeFormat('en-US', {
-        timeZone: BUSINESS_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
-        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-      }).formatToParts(new Date(cand));
-      const g = (t) => +(p.find((x) => x.type === t) || {}).value || 0;
-      let hh = g('hour'); if (hh === 24) hh = 0;
-      if (g('year') === y && g('month') === mo && g('day') === day && hh === h && g('minute') === mi) {
-        const out = new Date(cand);
-        out.setUTCSeconds(0, 0);
-        return out.toISOString();
-      }
-    }
-  }
-  return snapped.toISOString();
-}
-/** Current wall-clock time components in Chicago, for min attribute on datetime-local */
-function chicagoNowParts() {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: BUSINESS_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hour12: false
-  }).formatToParts(new Date(Date.now() + 3600000)); // +1h minimum
-  const get = (t) => (parts.find((p) => p.type === t) || {}).value || '00';
-  let hh = get('hour'); if (hh === '24') hh = '00';
-  return get('year') + '-' + get('month') + '-' + get('day') + 'T' + hh + ':' + get('minute');
+    if (tz === ET) return d.toLocaleString('en-US', Object.assign({ timeZone: ET, timeZoneName: 'short' }, o)) + ' · New York';
+    return d.toLocaleString('en-US', tz ? Object.assign({ timeZone: tz }, o) : o) + (tz ? ' (' + tz + ')' : '');
+  } catch (e) { return d.toLocaleString('en-US', o); }
 }
 
 /* old-style requests that arrived as chat messages (before the form existed) */
@@ -712,7 +610,7 @@ async function updateRequest(id, patch) {
 /* calendar helpers */
 const icsDate = (v) => new Date(v).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 function requestDetails(r) {
-  return 'Free 15-minute consultation\nMember: ' + r.name + ' (' + r.email + ')' + (r.phone ? '\nPhone: ' + r.phone : '') +
+  return 'Free 15-minute consultation\nTime: ' + fmtInTz(r.acceptedSlot || r.slot1, ET) + '\nMember: ' + r.name + ' (' + r.email + ')' + (r.phone ? '\nPhone: ' + r.phone : '') +
     '\nSpecialty: ' + (r.specialty || '-') + '\nServices: ' + splitServices(r.service).join(', ') +
     '\nIssues: ' + (r.issues || '-') + (r.needs ? '\nNeeds: ' + r.needs : '') + (r.adminNote ? '\nMeeting link / note: ' + r.adminNote : '');
 }
@@ -748,16 +646,15 @@ async function submitRequest(btn) {
   if (!specialty) return toast('Select your specialty', 'error');
   if (!issues) return toast('Tell us what issues you are facing', 'error');
   if (!s1) return toast('Pick a date and time for your free 15-minute call', 'error');
-  const iso1 = chicagoLocalToIso(s1), iso2 = s2 ? chicagoLocalToIso(s2) : null;
-  const d1 = iso1 ? new Date(iso1) : null, d2 = iso2 ? new Date(iso2) : null, now = new Date();
-  if (!d1 || isNaN(d1) || d1 <= now) return toast('Pick a future date and time (Central Time)', 'error');
-  if (d2 && (isNaN(d2) || d2 <= now)) return toast('Second choice must be a future date and time (Central Time)', 'error');
+  const d1 = new Date(etToIso(s1) || NaN), d2 = s2 ? new Date(etToIso(s2) || NaN) : null, now = new Date();
+  if (isNaN(d1) || d1 <= now) return toast('Pick a future date and time', 'error');
+  if (d2 && (isNaN(d2) || d2 <= now)) return toast('Second choice must be a future date and time', 'error');
 
-  const tz = BUSINESS_TZ;
+  const tz = ET;
   const row = {
     user_id: currentUser.id, name: fullName(currentUser), email: currentUser.email,
     service: services.join(SVC_SEP), specialty, issues, needs, phone, tz,
-    slot1: iso1, slot2: iso2, status: 'new'
+    slot1: d1.toISOString(), slot2: d2 ? d2.toISOString() : null, status: 'new'
   };
   btn.disabled = true;
   let ok = false;
@@ -789,14 +686,7 @@ async function acceptRequest(id, slot) {
   const note = prompt('Meeting link or note for the member (optional):', '');
   if (note === null) return;
   if (await updateRequest(id, { status: 'accepted', acceptedSlot: when, adminNote: note.trim() })) {
-    // Service accepted → Premium member
-    if (r.user_id) {
-      const mem = getProfile(r.user_id);
-      if (mem && mem.tier !== 'premium' && !isAdminEmail(mem.email)) {
-        await saveProfile({ id: r.user_id, tier: 'premium', status: 'approved' });
-      }
-    }
-    toast('Accepted · member upgraded to Premium. Add to Google Calendar if needed.');
+    toast('Accepted. Tap "Add to Google Calendar" to put it on the Alaric calendar.');
     render();
   }
 }
@@ -822,10 +712,10 @@ function requestCard(r, admin) {
   h += rqRow('Specialty', esc(r.specialty)) + rqRow('Services', svcs) + rqRow('Issues', esc(r.issues).replace(/\n/g, '<br>')) + rqRow('Needs', esc(r.needs).replace(/\n/g, '<br>'));
   if (r.status === 'accepted') {
     h += rqRow('Confirmed call', '<b style="color:#5eead4">' + esc(fmtInTz(r.acceptedSlot, r.tz)) + '</b>');
-    if (admin) h += rqRow('Admin view (Central Time)', esc(fmtInTz(r.acceptedSlot, BUSINESS_TZ)));
+    if (admin) h += rqRow('Your time', esc(fmtInTz(r.acceptedSlot)));
   } else {
-    h += rqRow('1st choice', esc(fmtInTz(r.slot1, r.tz || BUSINESS_TZ))) + (r.slot2 ? rqRow('2nd choice', esc(fmtInTz(r.slot2, r.tz || BUSINESS_TZ))) : '');
-    if (admin) h += rqRow('Admin view (Central Time)', esc(fmtInTz(r.slot1, BUSINESS_TZ)) + (r.slot2 ? '<br>' + esc(fmtInTz(r.slot2, BUSINESS_TZ)) : ''));
+    h += rqRow('1st choice', esc(fmtInTz(r.slot1, r.tz))) + (r.slot2 ? rqRow('2nd choice', esc(fmtInTz(r.slot2, r.tz))) : '');
+    if (admin) h += rqRow('Your time', esc(fmtInTz(r.slot1)) + (r.slot2 ? '<br>' + esc(fmtInTz(r.slot2)) : ''));
   }
   h += rqRow(r.status === 'declined' ? 'Message' : 'Meeting link / note', esc(r.adminNote));
   h += '<div class="rq-actions">';
@@ -845,7 +735,7 @@ function pageRequest() {
   const pre = window._reqService || '';
   const spec = currentUser.specialty || '';
   const specs = !spec || SPECIALTIES.indexOf(spec) >= 0 ? SPECIALTIES : [spec].concat(SPECIALTIES);
-  const min = chicagoNowParts();
+  const min = etNowLocal(3600000);
   let h = '<div class="rq-wrap rq-form"><h1>Book your free consultation</h1><p class="sub">Tell us what you need. We will confirm a free 15-minute call on the Alaric calendar.</p>';
   if (isAdmin()) h += '<div class="pending-banner">You are logged in as admin. This will create a test request.</div>';
   h += '<div class="card"><p style="margin:0 0 16px;color:var(--muted);font-size:.9rem">Requesting as <b style="color:inherit">' + esc(fullName(currentUser)) + '</b> · ' + esc(currentUser.email) + '</p>';
@@ -856,9 +746,9 @@ function pageRequest() {
   h += '<div class="auth-field"><label>What issues are you facing right now?</label><textarea id="reqIssues" rows="4" placeholder="Example: many denied claims, slow credentialing, no one answers patient calls..."></textarea></div>';
   h += '<div class="auth-field"><label>Anything specific you need from us? (optional)</label><textarea id="reqNeeds" rows="3"></textarea></div>';
   h += '<div class="auth-field"><label>Phone (optional)</label><input id="reqPhone" type="tel" placeholder="Best number to call"></div>';
-  h += '<div class="rq-grid"><div class="auth-field"><label>Free 15-minute call: 1st choice</label><input id="reqSlot1" type="datetime-local" min="' + min + '"></div>' +
-    '<div class="auth-field"><label>2nd choice (optional)</label><input id="reqSlot2" type="datetime-local" min="' + min + '"></div></div>';
-  h += '<p class="rq-note">All times are in <b>' + BUSINESS_TZ_LABEL + '</b> (Houston HQ). Please do not include patient names or any patient information in this form.</p>';
+  h += '<div class="rq-grid"><div class="auth-field"><label>Free 15-minute call: 1st choice (Eastern Time)</label><input id="reqSlot1" type="datetime-local" min="' + min + '"></div>' +
+    '<div class="auth-field"><label>2nd choice (optional, Eastern Time)</label><input id="reqSlot2" type="datetime-local" min="' + min + '"></div></div>';
+  h += '<p class="rq-note">All times are <b>Eastern Time (New York, ET)</b>. Your local time now is ' + esc(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })) + ' (' + esc(localTz()) + '), New York is ' + esc(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: ET })) + '. Please do not include patient names or any patient information in this form.</p>';
   h += '<div class="rq-actions"><button class="btn" data-act="reqSubmit">Send request</button><button class="btn s o" data-act="nav" data-id="premium">Cancel</button></div></div></div>';
   return h;
 }
@@ -898,10 +788,11 @@ function servicesTable(withRequests) {
 }
 
 function pagePremiumServices() {
-  return '<h1>Premium Services</h1><p class="sub">Alaric Health Services — one partner for billing, credentialing, front-desk support and marketing. Click View all for full details.</p>' +
+  return '<h1>Premium Services</h1><p class="sub">Alaric Health Services — one partner for billing, credentialing, front-desk support and marketing.</p>' +
     '<div class="ps-hero"><b>Alaric Health Services</b><span>Medical Billing · Credentialing · Virtual Assistance · Digital Marketing</span><span>Every request includes a free 15-minute consultation call.</span></div>' +
     '<div class="ps-grid">' + SERVICES.map(serviceCard).join('') + '</div>' +
-    '<div class="card" style="text-align:center;padding:28px;margin-top:8px"><div style="font-weight:750;font-size:1.15rem;margin-bottom:8px">Not sure which service fits?</div><p class="sub" style="margin-bottom:16px">Tell us what you need and book a free 15-minute consultation call.</p><button class="btn" data-act="svc" data-id="General quote">Book free consultation</button></div>';
+    '<h2 class="ps-h2">Compare services</h2>' + servicesTable(false) +
+    '<div class="card" style="text-align:center;padding:28px"><div style="font-weight:750;font-size:1.15rem;margin-bottom:8px">Not sure which service fits?</div><p class="sub" style="margin-bottom:16px">Tell us what you need and book a free 15-minute consultation call.</p><button class="btn" data-act="svc" data-id="General quote">Book free consultation</button></div>';
 }
 
 function pageAdminServices() {
@@ -920,65 +811,10 @@ function statCard(label, value, small) {
 }
 
 function pageMemberHome() {
-  const me = getProfile(currentUser.id) || currentUser;
   const mine = getPosts().filter((p) => p.user_id === currentUser.id);
-  const myReqs = cache.requests.filter((r) => r.user_id === currentUser.id);
-  const tier = memberTier(me);
-  const st = isApproved() ? (tier === 'premium' ? 'Premium' : tier === 'verified' ? 'Verified' : 'Approved') : status === 'rejected' ? 'Rejected' : 'Pending';
-  const joined = joinedAt(me);
-  const joinedStr = joined ? joined.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '—';
-  const eligible = isEligibleForVerify(me);
-  const applied = !!(me.verify_requested);
-
-  let h = '<div class="mh-hero">' +
-    '<div class="mh-hero-text">' +
-    '<div class="mh-kicker">Private provider network</div>' +
-    '<h1>Welcome back, ' + esc(currentUser.first || 'Member') + '</h1>' +
-    '<p class="sub" style="margin:0">' + esc(currentUser.specialty || 'Healthcare provider') + ' · Member since ' + esc(joinedStr) + '</p>' +
-    '<div style="margin-top:12px">' + roleBadge(me) + '</div></div>' +
-    '<div class="mh-hero-badge">' + (tier === 'premium' ? '★' : tier === 'verified' ? '✓' : 'A') + '</div></div>';
-
-  h += accessBanner();
-
-  if (eligible && !applied) {
-    h += '<div class="card verify-card"><div><b>You are eligible for a Verifier badge</b>' +
-      '<p class="sub" style="margin:6px 0 0">You have been on the platform for 1+ month. Apply so an admin can review and grant the ✓ Verified badge.</p></div>' +
-      '<button class="btn" data-act="applyVerify">Apply for Verifier</button></div>';
-  } else if (applied && tier !== 'verified' && tier !== 'premium') {
-    h += '<div class="card verify-card pending"><div><b>Verification requested</b><p class="sub" style="margin:6px 0 0">An admin will review your application soon.</p></div></div>';
-  }
-
-  h += '<div class="stats mh-stats">' +
-    statCard('Status', st, true) +
-    statCard('My questions', mine.length) +
-    statCard('Service requests', myReqs.length) +
-    statCard('Network', 'Private', true) +
-    '</div>';
-
-  h += '<div class="mh-actions">' +
-    '<button class="btn mh-tile" data-act="nav" data-id="ask"><span class="mh-tile-icon">✎</span><span><b>Post a question</b><small>Text + optional image</small></span></button>' +
-    '<button class="btn mh-tile o" data-act="nav" data-id="premium"><span class="mh-tile-icon">★</span><span><b>Book consultation</b><small>Free 15-min call · Central Time</small></span></button>' +
-    '<button class="btn mh-tile o" data-act="nav" data-id="myRequests"><span class="mh-tile-icon">☰</span><span><b>My requests</b><small>Status & schedule</small></span></button>' +
-    '<button class="btn mh-tile o" data-act="nav" data-id="chat"><span class="mh-tile-icon">✉</span><span><b>Message Admin</b><small>Private support only</small></span></button>' +
-    '</div>';
-
-  if (tier === 'premium') {
-    h += '<div class="card premium-strip"><b>★ Premium member</b><span>Priority consultation · dedicated support channel via Message Admin</span></div>';
-  }
-
-  const recent = mine.slice(0, 3);
-  h += '<h2 class="ps-h2" style="margin-top:28px">Recent activity</h2>';
-  if (!recent.length) {
-    h += '<div class="card empty">No questions yet. Share a professional question with the network — no patient data.</div>';
-  } else {
-    recent.forEach((p) => {
-      h += '<div class="card" style="padding:14px 16px"><div class="post-title" style="font-size:1rem">' + esc(p.title) + '</div>' +
-        '<div class="post-meta"><span>' + esc(fmtDate(p.created)) + '</span></div></div>';
-    });
-  }
-
-  h += privacyFooter();
-  return h;
+  const st = isApproved() ? 'Approved' : status === 'rejected' ? 'Rejected' : 'Pending';
+  return '<h1>Member Home</h1><p class="sub">Members see and answer member questions only. Admin tools stay hidden.</p>' + accessBanner() +
+    '<div class="stats">' + statCard('My questions', mine.length) + statCard('Status', st, true) + '</div>';
 }
 
 function pageAdminOverview() {
@@ -1000,38 +836,21 @@ function pageAdminOverview() {
 
 function pageAdminMembers() {
   const profiles = getProfiles().slice().sort((a, b) => byCreated(b, a));
-  const verifyQueue = profiles.filter((p) => p.verify_requested && p.tier !== 'verified' && p.tier !== 'premium');
-  let h = '<h1>Members</h1><p class="sub">Approve, verify (after 1 month), Premium, Official, Super Admin. Owner account cannot be changed.</p>';
-
-  if (verifyQueue.length) {
-    h += '<h2 class="ps-h2">Verification requests</h2>';
-    verifyQueue.forEach((p) => {
-      h += '<div class="card verify-card"><div><b>' + esc(fullName(p)) + '</b> · ' + esc(p.specialty || '') +
-        '<p class="sub" style="margin:4px 0 0">Applied for Verifier badge · joined ' + esc(fmtDate(p.created)) + '</p></div>' +
-        '<button class="btn s ok" data-act="makeVerified" data-id="' + esc(p.id) + '">Grant Verified ✓</button></div>';
-    });
-  }
-
+  let h = '<h1>Members</h1><p class="sub">Grant Official or Admin. New users = members only.</p>';
   if (!profiles.length) return h + '<div class="card empty">No members yet</div>';
-  h += '<h2 class="ps-h2">All members</h2>';
-  h += '<div class="card"><div class="table-wrap"><table><tr><th>Name</th><th>Email</th><th>Specialty</th><th>Tier</th><th>Status</th><th>Joined</th><th>Actions</th></tr>';
+  h += '<div class="card"><div class="table-wrap"><table><tr><th>Name</th><th>Email</th><th>Specialty</th><th>Role</th><th>Status</th><th>Actions</th></tr>';
   profiles.forEach((p) => {
     const owner = isAdminEmail(p.email), self = p.id === currentUser.id, id = esc(p.id);
     const pill = p.status === 'approved' ? 'ok' : p.status === 'rejected' ? 'bad' : 'warn';
-    const eligible = monthsOnPlatform(p) >= 1 && p.tier !== 'verified' && p.tier !== 'premium' && p.role === 'member';
-    h += '<tr><td>' + esc(fullName(p)) + '</td><td>' + esc(p.email || '—') + '</td><td>' + esc(p.specialty || '—') + '</td><td>' + roleBadge(p) + (owner ? ' <span class="pill ok">Owner</span>' : '') + '</td>' +
-      '<td><span class="pill ' + pill + '">' + esc(p.status || 'pending') + '</span></td><td>' + esc(fmtDate(p.created)) + '</td><td style="white-space:nowrap">';
-    if (owner) h += '<span style="color:var(--muted);font-size:.8rem">Owner</span>';
+    h += '<tr><td>' + esc(fullName(p)) + '</td><td>' + esc(p.email || '—') + '</td><td>' + esc(p.specialty || '—') + '</td><td>' + roleBadge(p) + (owner ? ' <span class="pill ok">Owner</span>' : '') + '</td><td><span class="pill ' + pill + '">' + esc(p.status || 'pending') + '</span></td><td style="white-space:nowrap">';
+    if (owner) h += '<span style="color:var(--muted);font-size:.8rem">Main admin</span>';
     else if (self) h += '<span style="color:var(--muted);font-size:.8rem">You</span>';
     else {
       if (p.status !== 'approved') h += '<button class="btn s ok" data-act="approve" data-id="' + id + '">Approve</button> ';
       if (p.status !== 'rejected') h += '<button class="btn s d" data-act="reject" data-id="' + id + '">Reject</button> ';
-      if (eligible) h += '<button class="btn s ok" data-act="makeVerified" data-id="' + id + '">Make Verified</button> ';
-      if (p.tier !== 'premium') h += '<button class="btn s o" data-act="makePremium" data-id="' + id + '">Make Premium</button> ';
-      if (p.role !== 'official') h += '<button class="btn s o" data-act="makeOfficial" data-id="' + id + '">Official</button> ';
-      if (p.role !== 'super_admin' && p.role !== 'admin') h += '<button class="btn s" data-act="makeSuperAdmin" data-id="' + id + '">Super Admin</button> ';
-      if (p.role === 'admin' || p.role === 'super_admin' || p.role === 'official' || p.tier === 'premium' || p.tier === 'verified')
-        h += '<button class="btn s o" data-act="makeMember" data-id="' + id + '">Reset Member</button>';
+      if (p.role !== 'official') h += '<button class="btn s o" data-act="makeOfficial" data-id="' + id + '">Make Official</button> ';
+      if (p.role !== 'admin') h += '<button class="btn s" data-act="makeAdmin" data-id="' + id + '">Make Admin</button> ';
+      if (p.role === 'admin' || p.role === 'official') h += '<button class="btn s o" data-act="makeMember" data-id="' + id + '">Make Member</button>';
     }
     h += '</td></tr>';
   });
@@ -1049,7 +868,6 @@ function postCard(p, interactive) {
   h += '<span>' + esc(fmtDate(p.created)) + '</span><span class="pill">' + esc(p.visibility || 'members') + '</span>';
   if (!interactive) h += '<span>' + likes.length + ' reactions</span><span>' + pcs.length + ' answers</span>';
   h += '</div><div class="post-body">' + esc(p.body) + '</div>';
-  if (p.image) h += '<div class="post-image-wrap"><img class="post-image" src="' + esc(p.image) + '" alt=""></div>';
   if (interactive) {
     h += '<div class="post-actions"><button class="btn s o" data-act="like" data-id="' + esc(p.id) + '">' + (liked ? '♥' : '♡') + ' ' + likes.length + '</button><span style="color:var(--muted);font-size:.85rem">' + pcs.length + ' comments</span>';
     if (p.user_id === currentUser.id || isAdmin()) h += '<button class="btn s d" data-act="delPost" data-id="' + esc(p.id) + '">Delete</button>';
@@ -1057,8 +875,7 @@ function postCard(p, interactive) {
   }
   pcs.forEach((c) => { h += '<div class="comment"><div class="who">' + esc(publicName(c.user_id)) + ' ' + roleBadge(getProfile(c.user_id)) + '</div><div>' + esc(c.body) + '</div></div>'; });
   if (interactive && isApproved()) {
-    h += '<div class="bar" style="margin-top:12px;margin-bottom:0"><input placeholder="Write an answer..." data-cmt-input="' + esc(p.id) + '"><button class="btn s" data-act="cmtSend" data-id="' + esc(p.id) + '">Answer</button></div>';
-    h += '<p class="rq-note" style="margin-top:8px">No patient or personal data. You are responsible for what you post.</p>';
+    h += '<div class="bar" style="margin-top:12px;margin-bottom:0"><input placeholder="Comment..." data-cmt-input="' + esc(p.id) + '"><button class="btn s" data-act="cmtSend" data-id="' + esc(p.id) + '">Comment</button></div>';
   }
   return h + '</div>';
 }
@@ -1067,29 +884,18 @@ function pageFeed() {
   const q = (window._feedQ || '').toLowerCase();
   const posts = getPosts().filter(canSeePost).filter((p) => !q || (p.title || '').toLowerCase().indexOf(q) > -1 || (p.body || '').toLowerCase().indexOf(q) > -1);
   let h = '<h1>' + (isAdmin() ? 'All Questions (admin)' : 'Member Questions') + '</h1><p class="sub">' + (isAdmin() ? 'You see every question, including private and official.' : 'Only questions from members. You can answer them here.') + '</p>' +
-    communityDisclaimer() +
     '<div class="bar"><input class="search-bar" id="feedSearch" placeholder="Search..." value="' + esc(window._feedQ || '') + '"><button class="btn s o" data-act="refresh">Refresh</button></div>' + accessBanner();
   if (!posts.length) return h + '<div class="card empty">No questions yet.</div>';
   return h + posts.map((p) => postCard(p, true)).join('');
 }
 
 function pageNewPost() {
-  if (!isApproved()) return '<h1>Post your question</h1>' + accessBanner() + privacyFooter();
+  if (!isApproved()) return '<h1>Ask a Question</h1>' + accessBanner();
   let vis = '<div class="vis-row"><label><input type="radio" name="vis" value="members" checked> All members</label>';
   if (isOfficial()) vis += '<label><input type="radio" name="vis" value="official"> Official only</label>';
   vis += '<label><input type="radio" name="vis" value="private"> Only me</label></div>';
-  let h = '<h1>Post your question</h1><p class="sub">' + (isAdmin() ? 'Admin post — members only see questions from members unless visibility allows.' : 'Share a professional question. Optional image. No patient or personal data.') + '</p>';
-  h += communityDisclaimer();
-  h += '<div class="card"><div class="auth-field"><label>Title</label><input id="npTitle" placeholder="Short title"></div>' +
-    '<div class="auth-field"><label>Details</label><textarea id="npBody" rows="5" placeholder="Describe the issue without patient names or identifiers..."></textarea></div>' +
-    '<div class="auth-field"><label>Image (optional)</label>' +
-    '<input type="file" id="npImage" accept="image/*"><p class="rq-note">JPG/PNG, max ~800 KB. No patient photos or IDs.</p>' +
-    '<div id="npImagePreview" class="np-preview" style="display:none"></div></div>' +
-    vis +
-    '<p class="rq-note">By posting you accept responsibility for your content. Admins are not liable for member posts.</p>' +
-    '<button class="btn" data-act="post">Post question</button></div>';
-  h += privacyFooter();
-  return h;
+  return '<h1>Ask a Question</h1><p class="sub">' + (isAdmin() ? 'Admin post — members only see questions from members.' : 'Your question is visible to other members.') + '</p>' +
+    '<div class="card"><div class="auth-field"><label>Title</label><input id="npTitle" placeholder="Title"></div><div class="auth-field"><label>Details</label><textarea id="npBody" rows="5"></textarea></div>' + vis + '<button class="btn" data-act="post">Post question</button></div>';
 }
 
 function pageSeeAll() {
@@ -1114,62 +920,43 @@ function chatInputBar(to, placeholder) {
 }
 
 function pageChat() {
-  if (!isApproved()) return '<h1>Message Admin</h1>' + accessBanner() + privacyFooter();
+  if (!isApproved()) return '<h1>Admin Chat</h1>' + accessBanner();
   const refresh = '<button class="btn s o" data-act="refresh">Refresh</button>';
 
   if (!isAdmin()) {
-    // Members / Premium / Verified / Official: only Message Admin — no peer chat
     const admin = primaryAdmin();
-    let h = '<h1>Message Admin</h1><p class="sub">Private support with Alaric admin only. Member-to-member chat is not available.</p><div class="bar">' + refresh + '</div>';
-    h += '<div class="card"><div class="chat-box">';
-    if (!admin) return h + '<div class="empty">Admin is not available yet.</div></div></div>' + privacyFooter();
+    let h = '<h1>Chat with Admin</h1><p class="sub">Sirf admin se. Doosre members se chat nahi.</p><div class="bar">' + refresh + '</div><div class="card"><div class="chat-box">';
+    if (!admin) return h + '<div class="empty">Admin abhi available nahi.</div></div></div>';
     const msgs = threadMsgs(currentUser.id);
-    h += msgs.length ? msgs.map((m) => chatBubble(m)).join('') : '<div class="empty">No messages yet. Send a note below — no patient data.</div>';
-    return h + '</div>' + chatInputBar(admin.id, 'Message admin (no patient data)...') + '</div>' + privacyFooter();
+    h += msgs.length ? msgs.map((m) => chatBubble(m)).join('') : '<div class="empty">Abhi koi message nahi.</div>';
+    return h + '</div>' + chatInputBar(admin.id, 'Message admin...') + '</div>';
   }
 
-  // Owner + Super Admin: chat with any member
+  // admin view: approved members + anyone who already wrote to us (e.g. service requests)
   const members = getProfiles().filter((p) => !isAdminProfile(p) && (p.status === 'approved' || threadMsgs(p.id).length));
   if (!window._chatWith || !members.some((p) => p.id === window._chatWith)) window._chatWith = members[0] && members[0].id;
-  let h = '<h1>Member Chat</h1><p class="sub">Only Owner and Super Admin can open chats. Members cannot message each other.</p><div class="bar">' + refresh + '</div>';
+  let h = '<h1>Member Chat</h1><p class="sub">Aap kisi bhi member se alag chat kar sakte ho. Members ek doosre se nahi.</p><div class="bar">' + refresh + '</div>';
   h += '<div style="display:grid;grid-template-columns:minmax(180px,240px) 1fr;gap:12px" class="chat-grid"><div class="card" style="margin:0;max-height:520px;overflow:auto">';
-  if (!members.length) h += '<p class="empty">No members yet.</p>';
-  members.forEach((p) => {
-    h += '<button class="nav' + (p.id === window._chatWith ? ' on' : '') + '" data-act="chatPick" data-id="' + esc(p.id) + '" style="margin-bottom:4px">' +
-      esc(fullName(p)) + ' ' + roleBadge(p) + '</button>';
-  });
+  if (!members.length) h += '<p class="empty">Koi member nahi.</p>';
+  members.forEach((p) => { h += '<button class="nav' + (p.id === window._chatWith ? ' on' : '') + '" data-act="chatPick" data-id="' + esc(p.id) + '" style="margin-bottom:4px">' + esc(fullName(p)) + '</button>'; });
   h += '</div><div class="card" style="margin:0"><div class="chat-box">';
-  if (!window._chatWith) h += '<div class="empty">Select a member.</div>';
+  if (!window._chatWith) h += '<div class="empty">Member select karo.</div>';
   else {
     const msgs = threadMsgs(window._chatWith);
-    h += msgs.length ? msgs.map((m) => chatBubble(m)).join('') : '<div class="empty">No messages with this member yet.</div>';
+    h += msgs.length ? msgs.map((m) => chatBubble(m)).join('') : '<div class="empty">Is member se abhi koi message nahi.</div>';
   }
   h += '</div>' + (window._chatWith ? chatInputBar(window._chatWith, 'Message member...') : '') + '</div></div>';
   return h;
 }
 
 function pageProfile() {
-  const me = getProfile(currentUser.id) || currentUser;
-  const letter = (currentUser.first || '?')[0].toUpperCase();
-  const joined = joinedAt(me);
-  const joinedStr = joined ? joined.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '—';
-  let h = '<h1>My Profile</h1><p class="sub">Professional profile only. Do not add phone, home address, or patient information.</p>';
-  h += '<div class="card profile-card">';
-  h += me.photo
-    ? '<img class="profile-photo" src="' + esc(me.photo) + '" alt="">'
-    : '<div class="profile-photo-ph">' + esc(letter) + '</div>';
-  h += '<label class="photo-btn">Change photo<input type="file" id="photoInput" accept="image/*"></label>';
-  h += '<div style="margin:8px 0 14px">' + roleBadge(me) + '</div>';
-  h += field('Name', fullName(currentUser)) + field('Email', currentUser.email) + field('Specialty', currentUser.specialty || '—') + field('Member since', joinedStr);
-  h += '<div class="auth-field" style="margin-top:16px"><label>Professional bio (optional)</label>' +
-    '<textarea id="bioInput" rows="3" maxlength="300" placeholder="e.g. Family medicine · focus on RCM & patient access. No personal contact details.">' + esc(me.bio || '') + '</textarea>' +
-    '<p class="rq-note">Max 300 characters. No phone, address, or patient data.</p></div>';
-  h += '<button class="btn" data-act="saveBio">Save bio</button></div>';
-  h += privacyFooter();
-  return h;
-}
-function field(label, val) {
-  return '<div class="rq-row"><b>' + label + '</b><span>' + esc(val || '—') + '</span></div>';
+  const p = getProfile(currentUser.id) || {}, letter = (currentUser.first || '?')[0].toUpperCase();
+  const field = (label, val) => '<div class="auth-field"><label>' + label + '</label><input value="' + esc(val) + '" disabled style="opacity:.7"></div>';
+  return '<h1>My Profile</h1><div class="card" style="max-width:480px">' +
+    (p.photo ? '<img class="profile-photo" src="' + esc(p.photo) + '" alt="">' : '<div class="profile-photo-ph">' + esc(letter) + '</div>') +
+    '<label class="photo-btn">Change photo<input type="file" id="photoInput" accept="image/*"></label>' +
+    '<div style="margin-bottom:12px">' + roleBadge(p.role ? p : { role, status }) + '</div>' +
+    field('Name', fullName(currentUser)) + field('Email', currentUser.email) + field('Specialty', currentUser.specialty) + field('Role', role) + '</div>';
 }
 
 /* ---------- Actions (one place, used through event delegation) ---------- */
@@ -1186,11 +973,6 @@ async function changeAccess(id, patch, doneMsg, confirmMsg) {
 const ACTIONS = {
   nav: (id) => goTo(id),
   logout: () => logout(),
-  toggleTheme: () => {
-    const dark = document.documentElement.classList.toggle('dark');
-    try { localStorage.setItem('alaric_theme', dark ? 'dark' : 'light'); } catch (e) {}
-    render({ keepScroll: true });
-  },
   refresh: async () => { await loadAllData(currentUser.id); toast('Refreshed'); render(); },
   toggle: (id, el) => {
     const d = $(id);
@@ -1206,37 +988,18 @@ const ACTIONS = {
   ics: (id) => downloadIcs(id),
 
   approve: (id) => changeAccess(id, { status: 'approved' }, 'Approved'),
-  reject: (id) => changeAccess(id, { status: 'rejected', role: 'member', tier: 'member', verify_requested: false }, 'Rejected', 'Reject this member?'),
+  reject: (id) => changeAccess(id, { status: 'rejected', role: 'member' }, 'Rejected', 'Reject this member?'),
   makeOfficial: (id) => changeAccess(id, { role: 'official', status: 'approved' }, 'Official granted'),
-  makeAdmin: (id) => changeAccess(id, { role: 'admin', status: 'approved' }, 'Admin granted', 'Give FULL admin access?'),
-  makeSuperAdmin: (id) => changeAccess(id, { role: 'super_admin', status: 'approved' }, 'Super Admin granted', 'They will get chat access like Owner. Continue?'),
-  makeVerified: (id) => changeAccess(id, { tier: 'verified', status: 'approved', verify_requested: false, role: 'member' }, 'Verified badge granted'),
-  makePremium: (id) => changeAccess(id, { tier: 'premium', status: 'approved', role: 'member' }, 'Premium granted'),
-  makeMember: (id) => changeAccess(id, { role: 'member', status: 'approved', tier: 'member' }, 'Reset to Member'),
-
-  applyVerify: async () => {
-    const me = getProfile(currentUser.id);
-    if (!isEligibleForVerify(me)) return toast('Not eligible yet (need 1 month)', 'error');
-    if (await saveProfile({ id: currentUser.id, verify_requested: true })) {
-      toast('Verification request sent to admin');
-      render();
-    }
-  },
-  saveBio: async () => {
-    const bio = (($('bioInput') && $('bioInput').value) || '').trim().slice(0, 300);
-    if (await saveProfile({ id: currentUser.id, bio })) toast('Bio saved');
-    render();
-  },
+  makeAdmin: (id) => changeAccess(id, { role: 'admin', status: 'approved' }, 'Admin granted', 'Give FULL admin access to this member? They will see every question and private chat.'),
+  makeMember: (id) => changeAccess(id, { role: 'member', status: 'approved' }, 'Set to Member'),
 
   post: async (id, btn) => {
     const title = ($('npTitle').value || '').trim(), body = ($('npBody').value || '').trim();
     const vis = (document.querySelector('input[name=vis]:checked') || {}).value || 'members';
     if (!title || !body) return toast('Title and details required', 'error');
     btn.disabled = true;
-    let image = window._npImageData || '';
-    const r = await addRecord('posts', { user_id: currentUser.id, title, body, image, visibility: vis });
+    const r = await addRecord('posts', { user_id: currentUser.id, title, body, visibility: vis });
     btn.disabled = false;
-    window._npImageData = '';
     if (r) { toast('Posted'); goTo('feed'); }
   },
   like: async (id) => { await toggleLike(id, currentUser.id); render(); },
@@ -1302,33 +1065,15 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('change', (e) => {
-  if (e.target.id === 'photoInput') {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
-    if (f.size > 900000) return toast('Image too large (max ~900 KB)', 'error');
-    const r = new FileReader();
-    r.onload = async () => {
-      if (await saveProfile({ id: currentUser.id, photo: r.result })) { toast('Photo updated'); render(); }
-    };
-    r.readAsDataURL(f);
-    return;
-  }
-  if (e.target.id === 'npImage') {
-    const f = e.target.files && e.target.files[0];
-    window._npImageData = '';
-    const prev = $('npImagePreview');
-    if (!f) { if (prev) { prev.style.display = 'none'; prev.innerHTML = ''; } return; }
-    if (f.size > 800000) return toast('Image too large (max ~800 KB)', 'error');
-    const r = new FileReader();
-    r.onload = () => {
-      window._npImageData = r.result;
-      if (prev) {
-        prev.style.display = 'block';
-        prev.innerHTML = '<img src="' + r.result + '" alt="preview" style="max-width:100%;max-height:220px;border-radius:12px">';
-      }
-    };
-    r.readAsDataURL(f);
-  }
+  if (e.target.id !== 'photoInput') return;
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  if (f.size > 900000) return toast('Image too large (max ~900 KB)', 'error');
+  const r = new FileReader();
+  r.onload = async () => {
+    if (await saveProfile({ id: currentUser.id, photo: r.result })) { toast('Photo updated'); render(); }
+  };
+  r.readAsDataURL(f);
 });
 
 /* ---------- Password recovery (reset link opens the app with a recovery session) ---------- */
@@ -1409,7 +1154,7 @@ function injectPolish() {
     '.alaric-modal-box{width:100%;max-width:400px;background:var(--card,#111827);border:1px solid var(--border,rgba(255,255,255,.15));border-radius:14px;padding:24px}' +
     '.alaric-modal-msg{color:#f87171;font-size:.85rem;min-height:1.2em;margin:8px 0}' +
     '@media(max-width:720px){.rq-grid{grid-template-columns:1fr}.rq-row{flex-direction:column;gap:0}.chat-grid{grid-template-columns:1fr!important}.stats{grid-template-columns:repeat(2,1fr)!important}}' +
-    '.mh-hero{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:22px 22px;margin-bottom:18px;background:linear-gradient(135deg,rgba(212,175,55,.12),rgba(45,212,191,.06));border:1px solid rgba(212,175,55,.22);border-radius:18px}' +'.mh-kicker{font-size:.7rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#E8C547;margin-bottom:6px}' +'.mh-hero-badge{width:56px;height:56px;border-radius:16px;background:linear-gradient(145deg,#E8C547,#A68B2A);color:#1a1408;display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:800;flex-shrink:0;box-shadow:0 8px 24px rgba(212,175,55,.25)}' +'.mh-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:18px 0}' +'.mh-tile{display:flex;align-items:center;gap:14px;text-align:left;padding:16px 18px;border-radius:14px}' +'.mh-tile-icon{font-size:1.25rem;opacity:.9}' +'.mh-tile b{display:block;font-size:.95rem}' +'.mh-tile small{display:block;font-weight:500;opacity:.75;font-size:.78rem;margin-top:2px}' +'.verify-card{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;border-color:rgba(212,175,55,.35)!important;background:linear-gradient(90deg,rgba(212,175,55,.1),transparent)}' +'.verify-card.pending{border-color:rgba(251,191,36,.3)!important}' +'.premium-strip{display:flex;gap:14px;align-items:center;flex-wrap:wrap;background:linear-gradient(90deg,rgba(212,175,55,.14),rgba(45,212,191,.06));border:1px solid rgba(212,175,55,.28)}' +'.premium-strip b{color:#E8C547}' +'.premium-strip span{color:var(--muted);font-size:.88rem}' +'.priv-bar,.disc-bar{display:flex;gap:12px;border-radius:14px;padding:12px 14px;font-size:.82rem;margin-top:22px;line-height:1.45}' +'.priv-bar{background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);color:#99f6e4}' +'.disc-bar{background:rgba(212,175,55,.08);border:1px solid rgba(212,175,55,.2);color:#fde68a;margin-bottom:14px}' +'.post-image-wrap{margin:12px 0;border-radius:14px;overflow:hidden;border:1px solid var(--border)}' +'.post-image{display:block;max-width:100%;max-height:360px;object-fit:contain;background:#000}' +'.np-preview{margin-top:10px}' +'.profile-card{max-width:520px}' +'.badge-role.premium{background:rgba(212,175,55,.18);color:#E8C547}' +'@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}';
+    '@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}';
   document.head.appendChild(s);
 }
 
