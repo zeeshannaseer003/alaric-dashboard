@@ -422,7 +422,7 @@ const PAGES = {
   ask:       { label: 'Ask Question',     fn: pageNewPost },
   chat:      { label: () => isAdmin() ? 'Member Chat' : 'Admin Chat', fn: pageChat },
   premium:   { label: 'Premium Services', fn: pagePremiumServices },
-  services:  { label: 'Services',         fn: pageAdminServices, reqs: true },
+  services:  { label: 'Service Requests', fn: pageAdminServices, reqs: true },
   request:   { label: 'Request',          fn: pageRequest, hidden: true },
   myRequests:{ label: 'My Requests',      fn: pageMyRequests },
   profile:   { label: 'My Profile',       fn: pageProfile }
@@ -430,7 +430,7 @@ const PAGES = {
 const NAV_ADMIN = [
   ['Control', ['seeAll', 'approvals', 'members', 'services']],
   ['Community', ['feed', 'chat']],
-  ['Services', ['premium']],
+  ['Premium', ['premium']],
   ['Account', ['profile']]
 ];
 const NAV_MEMBER = [
@@ -797,7 +797,8 @@ function pagePremiumServices() {
 
 function pageAdminServices() {
   const reqs = allRequests(), mine = cache.requests;
-  let h = '<h1>Services</h1><p class="sub">Consultation requests from members and the price list. To change a price or add a service, edit the SERVICES list in app.js.</p>';
+  let h = '<h1>Service Requests</h1><p class="sub">Consultation requests from members and the price list. To change a price or add a service, edit the SERVICES list in app.js.</p>' +
+    '<div class="rq-actions" style="margin:0 0 16px"><button class="btn s o" data-act="nav" data-id="premium">View Premium Services page</button></div>';
   if (useCloud && !requestsTable) h += '<div class="pending-banner"><b>Requests table missing.</b> Run the service_requests SQL in Supabase. Until then, requests arrive as chat messages and cannot be accepted here.</div>';
   h += '<div class="stats">' + statCard('New requests', mine.filter((r) => r.status === 'new').length) + statCard('Accepted', mine.filter((r) => r.status === 'accepted').length) + statCard('Total requests', reqs.length) + statCard('Services', SERVICES.length) + '</div>';
   h += '<h2 class="ps-h2">Consultation requests</h2>';
