@@ -147,13 +147,13 @@ const TABLES = {
   profiles: {
     table: 'profiles',
     // photo is NOT selected here on purpose (big base64); own photo is loaded separately
-    cols: 'id,email,first_name,last_name,specialty,role,status,created_at',
-    from: (p) => ({ id: p.id, email: p.email, first: p.first_name, last: p.last_name, specialty: p.specialty, role: p.role || 'member', status: p.status || 'pending', photo: p.photo || '', created: p.created_at })
+    cols: 'id,email,first_name,last_name,specialty,role,status,created_at,bio,tier,verify_requested',
+    from: (p) => ({ id: p.id, email: p.email, first: p.first_name, last: p.last_name, specialty: p.specialty, role: p.role || 'member', status: p.status || 'pending', photo: p.photo || '', bio: p.bio || '', tier: p.tier || '', verifyRequested: !!p.verify_requested, created: p.created_at })
   },
   posts: {
     table: 'posts', order: ['created_at', false],
-    from: (p) => ({ id: p.id, user_id: p.user_id, title: p.title, body: p.body, visibility: p.visibility || 'members', created: p.created_at }),
-    to: (p) => ({ user_id: p.user_id, title: p.title, body: p.body, visibility: p.visibility || 'members' })
+    from: (p) => ({ id: p.id, user_id: p.user_id, title: p.title, body: p.body, visibility: p.visibility || 'members', image: p.image || '', created: p.created_at }),
+    to: (p) => ({ user_id: p.user_id, title: p.title, body: p.body, visibility: p.visibility || 'members', image: p.image || null })
   },
   comments: {
     table: 'comments', order: ['created_at', true],
@@ -215,7 +215,7 @@ const getLikes = () => cache.likes;
 const getChat = () => cache.chat;
 
 /* profile save: sends ONLY the fields you pass; rolls back cache if the DB refuses */
-const PROFILE_COLS = { email: 'email', first: 'first_name', last: 'last_name', specialty: 'specialty', role: 'role', status: 'status', photo: 'photo' };
+const PROFILE_COLS = { email: 'email', first: 'first_name', last: 'last_name', specialty: 'specialty', role: 'role', status: 'status', photo: 'photo', bio: 'bio', tier: 'tier', verifyRequested: 'verify_requested' };
 
 async function saveProfile(patch, opts) {
   opts = opts || {};
@@ -230,7 +230,7 @@ async function saveProfile(patch, opts) {
   if (!useCloud) { saveLocal('profiles'); return true; }
 
   const row = { id: patch.id };
-  Object.keys(PROFILE_COLS).forEach((k) => { if (k in patch) row[PROFILE_COLS[k]] = patch[k] || null; });
+  Object.keys(PROFILE_COLS).forEach((k) => { if (k in patch) row[PROFILE_COLS[k]] = typeof patch[k] === 'boolean' ? patch[k] : (patch[k] || null); });
   if (isNew) { row.role = merged.role || 'member'; row.status = merged.status || 'pending'; }
 
   const r = await sb.from('profiles').upsert(row, { onConflict: 'id', ignoreDuplicates: !!opts.createOnly });
@@ -348,6 +348,9 @@ async function logout() { await sb.auth.signOut(); resetSession(); }
 
 /* ---------- Display helpers ---------- */
 function roleBadge(p) {
+  return baseBadge(p) + (p && p.tier === 'premium' ? ' <span class="badge-role premium">Premium</span>' : '');
+}
+function baseBadge(p) {
   if (!p) return '<span class="badge-role member">Member</span>';
   if (p.role === 'admin') return '<span class="badge-role admin">Admin</span>';
   if (p.role === 'official' || p.role === 'staff') return '<span class="badge-role official">Official</span>';
@@ -711,7 +714,7 @@ function requestCard(r, admin) {
   if (admin) h += rqRow('Email', esc(r.email)) + rqRow('Phone', esc(r.phone));
   h += rqRow('Specialty', esc(r.specialty)) + rqRow('Services', svcs) + rqRow('Issues', esc(r.issues).replace(/\n/g, '<br>')) + rqRow('Needs', esc(r.needs).replace(/\n/g, '<br>'));
   if (r.status === 'accepted') {
-    h += rqRow('Confirmed call', '<b style="color:#5eead4">' + esc(fmtInTz(r.acceptedSlot, r.tz)) + '</b>');
+    h += rqRow('Confirmed call', '<b style="color:#7BB8DC">' + esc(fmtInTz(r.acceptedSlot, r.tz)) + '</b>');
     if (admin) h += rqRow('Your time', esc(fmtInTz(r.acceptedSlot)));
   } else {
     h += rqRow('1st choice', esc(fmtInTz(r.slot1, r.tz))) + (r.slot2 ? rqRow('2nd choice', esc(fmtInTz(r.slot2, r.tz))) : '');
@@ -812,14 +815,32 @@ function statCard(label, value, small) {
 }
 
 function pageMemberHome() {
+  const me = getProfile(currentUser.id) || {};
   const mine = getPosts().filter((p) => p.user_id === currentUser.id);
   const st = isApproved() ? 'Approved' : status === 'rejected' ? 'Rejected' : 'Pending';
-  return '<h1>Member Home</h1><p class="sub">Members see and answer member questions only. Admin tools stay hidden.</p>' + accessBanner() +
-    '<div class="stats">' + statCard('My questions', mine.length) + statCard('Status', st, true) + '</div>';
+  const tiles = [
+    ['✍️', 'Ask a question', 'Get help from other members', 'ask'],
+    ['💬', 'Questions', 'Browse and answer member questions', 'feed'],
+    ['🛟', 'Chat with admin', 'Private message to the Alaric team', 'chat'],
+    ['⭐', 'Premium services', 'Billing, credentialing, VA, marketing', 'premium']
+  ];
+  let h = '<div class="mh-hero"><div><div class="mh-kicker">Member dashboard</div><h1>Welcome, ' + esc(currentUser.first) + '</h1>' +
+    '<p class="sub" style="margin:0">' + roleBadge(me.role ? me : { role, status }) + (currentUser.specialty ? ' <span style="color:var(--muted);font-size:.85rem">' + esc(currentUser.specialty) + '</span>' : '') + '</p></div>' +
+    '<div class="mh-hero-badge">' + esc((currentUser.first || '?')[0].toUpperCase()) + '</div></div>';
+  h += accessBanner();
+  if (!isApproved() && status !== 'rejected') {
+    h += '<div class="card verify-card"><div><b>Get verified</b><div class="sub" style="margin:4px 0 0">Ask the admin to review your account so you can post and answer questions.</div></div>' +
+      (me.verifyRequested ? '<span class="pill warn">Request sent</span>' : '<button class="btn" data-act="requestVerify">Request verification</button>') + '</div>';
+  }
+  h += '<div class="stats">' + statCard('My questions', mine.length) + statCard('Status', st, true) + '</div>';
+  h += '<div class="mh-actions">' + tiles.map((t) => '<button class="btn o mh-tile" data-act="nav" data-id="' + t[3] + '"><span class="mh-tile-icon">' + t[0] + '</span><span><b>' + t[1] + '</b><small>' + t[2] + '</small></span></button>').join('') + '</div>';
+  h += '<div class="disc-bar"><span>ℹ️</span><div><b>Free community help.</b> Asking questions and getting community guidance is free. Alaric never asks for upfront payment for free assistance. Paid services are agreed with you before any work starts.</div></div>';
+  h += '<div class="card premium-strip"><div><b>Need hands-on help?</b> <span style="color:var(--muted)">The Alaric team can take on your billing, credentialing, front desk or marketing.</span></div><button class="btn s" data-act="nav" data-id="premium">View services</button></div>';
+  return h;
 }
 
 function pageAdminOverview() {
-  const profiles = getProfiles(), waiting = pendingList();
+  const profiles = getProfiles(), waiting = pendingList().sort((a, b) => (b.verifyRequested ? 1 : 0) - (a.verifyRequested ? 1 : 0));
   const approved = profiles.filter((p) => p.status === 'approved').length;
   let h = '<h1>Approve members</h1><p class="sub">Yahan se approval do. Approve ke baad unki questions aapko, unko, aur baaki members ko dikhengi.</p>';
   if (!useCloud) h += '<div class="pending-banner"><b>Shared mode off.</b> Run supabase-setup.sql in the Supabase SQL Editor so members share live data.</div>';
@@ -828,7 +849,7 @@ function pageAdminOverview() {
   if (!waiting.length) h += '<p class="empty">Koi naya member wait nahi kar raha.</p>';
   waiting.forEach((p) => {
     h += '<div style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--border)">' +
-      '<div><b>' + esc(fullName(p)) + '</b><div style="color:var(--muted);font-size:.85rem">' + esc(p.email || '') + ' · ' + esc(p.specialty || 'No specialty') + '</div></div>' +
+      '<div><b>' + esc(fullName(p)) + '</b>' + (p.verifyRequested ? ' <span class="pill warn">verification requested</span>' : '') + '<div style="color:var(--muted);font-size:.85rem">' + esc(p.email || '') + ' · ' + esc(p.specialty || 'No specialty') + '</div></div>' +
       '<div><button class="btn s ok" data-act="approve" data-id="' + esc(p.id) + '">Approve</button> <button class="btn s d" data-act="reject" data-id="' + esc(p.id) + '">Reject</button></div></div>';
   });
   h += '</div><p class="sub">Approved members ki baat <b>All Questions</b> mein aapko dikhegi. Woh khud bhi apni post dekhenge, aur doosre members bhi.</p>';
@@ -851,6 +872,7 @@ function pageAdminMembers() {
       if (p.status !== 'rejected') h += '<button class="btn s d" data-act="reject" data-id="' + id + '">Reject</button> ';
       if (p.role !== 'official') h += '<button class="btn s o" data-act="makeOfficial" data-id="' + id + '">Make Official</button> ';
       if (p.role !== 'admin') h += '<button class="btn s" data-act="makeAdmin" data-id="' + id + '">Make Admin</button> ';
+      h += '<button class="btn s o" data-act="togglePremium" data-id="' + id + '">' + (p.tier === 'premium' ? 'Remove Premium' : 'Make Premium') + '</button> ';
       if (p.role === 'admin' || p.role === 'official') h += '<button class="btn s o" data-act="makeMember" data-id="' + id + '">Make Member</button>';
     }
     h += '</td></tr>';
@@ -859,6 +881,11 @@ function pageAdminMembers() {
 }
 
 /* one post card used by the feed (interactive) and See all (read-only) */
+function postImage(p) {
+  return p.image && /^data:image\/(jpeg|png|webp|gif);base64,/.test(p.image)
+    ? '<div class="post-image-wrap"><img class="post-image" src="' + esc(p.image) + '" alt="Post image"></div>' : '';
+}
+
 function postCard(p, interactive) {
   const likes = getLikes().filter((l) => l.post_id === p.id);
   const liked = likes.some((l) => l.user_id === currentUser.id);
@@ -868,7 +895,7 @@ function postCard(p, interactive) {
   if (spec) h += '<span>' + esc(spec) + '</span>';
   h += '<span>' + esc(fmtDate(p.created)) + '</span><span class="pill">' + esc(p.visibility || 'members') + '</span>';
   if (!interactive) h += '<span>' + likes.length + ' reactions</span><span>' + pcs.length + ' answers</span>';
-  h += '</div><div class="post-body">' + esc(p.body) + '</div>';
+  h += '</div><div class="post-body">' + esc(p.body) + '</div>' + postImage(p);
   if (interactive) {
     h += '<div class="post-actions"><button class="btn s o" data-act="like" data-id="' + esc(p.id) + '">' + (liked ? '♥' : '♡') + ' ' + likes.length + '</button><span style="color:var(--muted);font-size:.85rem">' + pcs.length + ' comments</span>';
     if (p.user_id === currentUser.id || isAdmin()) h += '<button class="btn s d" data-act="delPost" data-id="' + esc(p.id) + '">Delete</button>';
@@ -892,11 +919,13 @@ function pageFeed() {
 
 function pageNewPost() {
   if (!isApproved()) return '<h1>Ask a Question</h1>' + accessBanner();
+  window._npImage = '';
   let vis = '<div class="vis-row"><label><input type="radio" name="vis" value="members" checked> All members</label>';
   if (isOfficial()) vis += '<label><input type="radio" name="vis" value="official"> Official only</label>';
   vis += '<label><input type="radio" name="vis" value="private"> Only me</label></div>';
   return '<h1>Ask a Question</h1><p class="sub">' + (isAdmin() ? 'Admin post — members only see questions from members.' : 'Your question is visible to other members.') + '</p>' +
-    '<div class="card"><div class="auth-field"><label>Title</label><input id="npTitle" placeholder="Title"></div><div class="auth-field"><label>Details</label><textarea id="npBody" rows="5"></textarea></div>' + vis + '<button class="btn" data-act="post">Post question</button></div>';
+    '<div class="card"><div class="auth-field"><label>Title</label><input id="npTitle" placeholder="Title"></div><div class="auth-field"><label>Details</label><textarea id="npBody" rows="5"></textarea></div>' +
+    '<div class="auth-field"><label>Image (optional)</label><input type="file" id="npImage" accept="image/*"><div id="npPreview"></div><p class="rq-note">Never upload anything that shows patient names or other patient information.</p></div>' + vis + '<button class="btn" data-act="post">Post question</button></div>';
 }
 
 function pageSeeAll() {
@@ -957,7 +986,9 @@ function pageProfile() {
     (p.photo ? '<img class="profile-photo" src="' + esc(p.photo) + '" alt="">' : '<div class="profile-photo-ph">' + esc(letter) + '</div>') +
     '<label class="photo-btn">Change photo<input type="file" id="photoInput" accept="image/*"></label>' +
     '<div style="margin-bottom:12px">' + roleBadge(p.role ? p : { role, status }) + '</div>' +
-    field('Name', fullName(currentUser)) + field('Email', currentUser.email) + field('Specialty', currentUser.specialty) + field('Role', role) + '</div>';
+    field('Name', fullName(currentUser)) + field('Email', currentUser.email) + field('Specialty', currentUser.specialty) + field('Role', role) +
+    '<div class="auth-field"><label>Short bio (optional)</label><textarea id="profBio" rows="3" maxlength="300" placeholder="Your professional background, max 300 characters">' + esc(p.bio || '') + '</textarea></div>' +
+    '<button class="btn s" data-act="saveBio">Save bio</button></div>';
 }
 
 /* ---------- Actions (one place, used through event delegation) ---------- */
@@ -988,8 +1019,8 @@ const ACTIONS = {
   reqDecline: (id) => declineRequest(id),
   ics: (id) => downloadIcs(id),
 
-  approve: (id) => changeAccess(id, { status: 'approved' }, 'Approved'),
-  reject: (id) => changeAccess(id, { status: 'rejected', role: 'member' }, 'Rejected', 'Reject this member?'),
+  approve: (id) => changeAccess(id, { status: 'approved', verifyRequested: false }, 'Approved'),
+  reject: (id) => changeAccess(id, { status: 'rejected', role: 'member', verifyRequested: false }, 'Rejected', 'Reject this member?'),
   makeOfficial: (id) => changeAccess(id, { role: 'official', status: 'approved' }, 'Official granted'),
   makeAdmin: (id) => changeAccess(id, { role: 'admin', status: 'approved' }, 'Admin granted', 'Give FULL admin access to this member? They will see every question and private chat.'),
   makeMember: (id) => changeAccess(id, { role: 'member', status: 'approved' }, 'Set to Member'),
@@ -999,7 +1030,8 @@ const ACTIONS = {
     const vis = (document.querySelector('input[name=vis]:checked') || {}).value || 'members';
     if (!title || !body) return toast('Title and details required', 'error');
     btn.disabled = true;
-    const r = await addRecord('posts', { user_id: currentUser.id, title, body, visibility: vis });
+    const r = await addRecord('posts', { user_id: currentUser.id, title, body, visibility: vis, image: window._npImage || '' });
+    window._npImage = '';
     btn.disabled = false;
     if (r) { toast('Posted'); goTo('feed'); }
   },
@@ -1013,6 +1045,22 @@ const ACTIONS = {
     const body = ((inp && inp.value) || '').trim();
     if (!body) return;
     if (await addRecord('comments', { post_id: id, user_id: currentUser.id, body })) render();
+  },
+  requestVerify: async () => {
+    if (await saveProfile({ id: currentUser.id, verifyRequested: true })) { toast('Verification request sent. The admin will review it.'); render(); }
+  },
+  togglePremium: (id) => {
+    const p = getProfile(id) || {}, on = p.tier === 'premium';
+    return changeAccess(id, { tier: on ? 'free' : 'premium' }, on ? 'Premium badge removed' : 'Premium badge granted');
+  },
+  saveBio: async () => {
+    const bio = (($('profBio') || {}).value || '').trim().slice(0, 300);
+    if (await saveProfile({ id: currentUser.id, bio })) toast('Bio saved');
+  },
+  npImageClear: () => {
+    window._npImage = '';
+    if ($('npPreview')) $('npPreview').innerHTML = '';
+    if ($('npImage')) $('npImage').value = '';
   },
   chatPick: (id) => { window._chatWith = id; render(); },
   chatSend: async (to) => {
@@ -1065,7 +1113,48 @@ document.addEventListener('input', (e) => {
   }
 });
 
-document.addEventListener('change', (e) => {
+/* shrink a picked image to a small JPEG (about 250 KB max) before saving */
+function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let max = 1000, q = 0.75, out = '';
+      for (let i = 0; i < 6; i++) {
+        const r = Math.min(1, max / Math.max(img.width, img.height));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(img.width * r));
+        c.height = Math.max(1, Math.round(img.height * r));
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        out = c.toDataURL('image/jpeg', q);
+        if (out.length <= 260000) break;
+        max = Math.round(max * 0.8);
+        q = Math.max(0.5, q - 0.08);
+      }
+      out.length <= 260000 ? resolve(out) : reject(new Error('Image is too large'));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read this image')); };
+    img.src = url;
+  });
+}
+
+document.addEventListener('change', async (e) => {
+  if (e.target.id === 'npImage') {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    try {
+      window._npImage = await compressImage(f);
+      $('npPreview').innerHTML = '<div class="post-image-wrap"><img class="post-image" src="' + esc(window._npImage) + '" alt="Preview"></div><button class="btn s d" data-act="npImageClear">Remove image</button>';
+    } catch (err) {
+      window._npImage = '';
+      e.target.value = '';
+      toast(err.message, 'error');
+    }
+    return;
+  }
   if (e.target.id !== 'photoInput') return;
   const f = e.target.files && e.target.files[0];
   if (!f) return;
@@ -1106,7 +1195,7 @@ function injectPolish() {
   s.textContent =
     '.btn,.nav,.logout-btn{transition:background-color .15s,border-color .15s,transform .1s}' +
     '.btn:active{transform:translateY(1px)}' +
-    '.btn:focus-visible,.nav:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid #2dd4bf;outline-offset:2px}' +
+    '.btn:focus-visible,.nav:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid #5BA3D0;outline-offset:2px}' +
     '.btn:disabled{opacity:.6;cursor:not-allowed}' +
     'table{width:100%;border-collapse:collapse}' +
     '.table-wrap{overflow-x:auto}' +
@@ -1114,16 +1203,16 @@ function injectPolish() {
     '.chat-box{max-height:min(55vh,460px);overflow-y:auto;padding-right:4px}' +
     '.chat-msg{border-radius:12px;padding:8px 12px;margin-bottom:8px;background:rgba(255,255,255,.05);overflow-wrap:anywhere}' +
     '.post-body,.comment{overflow-wrap:anywhere;white-space:pre-wrap}' +
-    '.ps-hero{display:flex;flex-direction:column;gap:4px;padding:18px 22px;border:1px solid rgba(45,212,191,.35);background:rgba(45,212,191,.07);border-radius:16px;margin-bottom:22px}' +
+    '.ps-hero{display:flex;flex-direction:column;gap:4px;padding:18px 22px;border:1px solid rgba(94,167,212,.35);background:rgba(94,167,212,.07);border-radius:16px;margin-bottom:22px}' +
     '.ps-hero span{color:var(--muted);font-size:.88rem}' +
     '.ps-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,310px),1fr));gap:18px;align-items:start;margin-bottom:26px}' +
     '.ps-card{display:flex;flex-direction:column;gap:14px;padding:22px;border:1px solid var(--border,rgba(255,255,255,.12));border-radius:16px;background:var(--card,rgba(255,255,255,.03))}' +
-    '.ps-featured{border-color:rgba(45,212,191,.5)}' +
+    '.ps-featured{border-color:rgba(94,167,212,.5)}' +
     '.ps-head{display:flex;gap:12px;align-items:flex-start}' +
-    '.ps-icon{flex:none;width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:1.3rem;border-radius:12px;background:rgba(45,212,191,.14)}' +
+    '.ps-icon{flex:none;width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:1.3rem;border-radius:12px;background:rgba(94,167,212,.14)}' +
     '.ps-name{font-weight:750;font-size:1.05rem;line-height:1.3}' +
     '.ps-blurb{color:var(--muted);font-size:.85rem;margin-top:3px}' +
-    '.ps-price{padding:14px 16px;border-radius:12px;background:rgba(45,212,191,.07)}' +
+    '.ps-price{padding:14px 16px;border-radius:12px;background:rgba(94,167,212,.07)}' +
     '.ps-amount{font-size:2rem;font-weight:800;line-height:1.1}' +
     '.ps-amount span{font-size:.9rem;font-weight:500;color:var(--muted);margin-left:6px}' +
     '.ps-alt{margin-top:10px;padding-top:10px;border-top:1px dashed var(--border,rgba(255,255,255,.15))}' +
@@ -1132,7 +1221,7 @@ function injectPolish() {
     '.ps-note{font-size:.8rem;color:var(--muted);margin-top:4px}' +
     '.ps-list{margin:0;padding:12px 0 0;list-style:none;font-size:.88rem;line-height:1.5;color:#d1d5db;border-top:1px solid var(--border,rgba(255,255,255,.12))}' +
     '.ps-list li{position:relative;padding-left:22px;margin-bottom:8px}' +
-    '.ps-list li::before{content:"✓";position:absolute;left:0;color:#5eead4}' +
+    '.ps-list li::before{content:"✓";position:absolute;left:0;color:#7BB8DC}' +
     '.ps-cta{width:100%}' +
     '.ps-h2{font-size:1.05rem;margin:8px 0 10px}' +
     '.ps-cell{line-height:1.6}' +
