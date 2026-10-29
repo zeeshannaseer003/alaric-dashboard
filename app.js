@@ -138,7 +138,7 @@ async function doForgot() {
 
 /* ---------- Data layer (cloud = Supabase, otherwise localStorage) ---------- */
 let useCloud = false;
-const cache = { profiles: [], posts: [], comments: [], likes: [], chat: [], requests: [] };
+const cache = { profiles: [], posts: [], comments: [], likes: [], chat: [], requests: [], bookmarks: [] };
 let requestsTable = true; // false when the service_requests table does not exist yet
 const lsKey = (k) => 'alaric_v2_' + k;
 const saveLocal = (k) => localStorage.setItem(lsKey(k), JSON.stringify(cache[k]));
@@ -163,6 +163,11 @@ const TABLES = {
   likes: {
     table: 'likes',
     from: (l) => ({ post_id: l.post_id, user_id: l.user_id })
+  },
+  bookmarks: {
+    table: 'bookmarks',
+    from: (b) => ({ user_id: b.user_id, post_id: b.post_id, created: b.created_at }),
+    to: (b) => ({ user_id: b.user_id, post_id: b.post_id })
   },
   chat: {
     table: 'chat_messages', order: ['created_at', true],
@@ -287,6 +292,28 @@ async function toggleLike(postId, userId) {
     toast(r.error.message, 'error');
   }
 }
+
+async function toggleBookmark(postId, userId) {
+  const i = cache.bookmarks.findIndex((b) => b.post_id === postId && b.user_id === userId);
+  const had = i >= 0;
+  if (had) cache.bookmarks.splice(i, 1);
+  else cache.bookmarks.push({ post_id: postId, user_id: userId });
+  if (!useCloud) {
+    try { localStorage.setItem(lsKey('bookmarks'), JSON.stringify(cache.bookmarks)); } catch (e) {}
+    return;
+  }
+  const q = sb.from('bookmarks');
+  const r = had
+    ? await q.delete().eq('post_id', postId).eq('user_id', userId)
+    : await q.insert({ post_id: postId, user_id: userId });
+  if (r.error) {
+    if (had) cache.bookmarks.push({ post_id: postId, user_id: userId });
+    else cache.bookmarks = cache.bookmarks.filter((b) => !(b.post_id === postId && b.user_id === userId));
+    toast(r.error.message, 'error');
+  }
+}
+
+
 
 /* ---------- Session / roles ---------- */
 let currentUser = null, role = 'member', status = 'pending', entering = false;
@@ -428,7 +455,8 @@ const PAGES = {
   services:  { label: 'Service Requests', fn: pageAdminServices, reqs: true },
   request:   { label: 'Request',          fn: pageRequest, hidden: true },
   myRequests:{ label: 'My Requests',      fn: pageMyRequests },
-  profile:   { label: 'My Profile',       fn: pageProfile }
+  profile:   { label: 'My Profile',       fn: pageProfile },
+  saved:     { label: 'Saved Posts',      fn: pageSaved }
 };
 const NAV_ADMIN = [
   ['Control', ['seeAll', 'approvals', 'members', 'services']],
@@ -437,7 +465,7 @@ const NAV_ADMIN = [
   ['Account', ['profile']]
 ];
 const NAV_MEMBER = [
-  ['Community', ['home', 'feed', 'ask', 'chat']],
+  ['Community', ['home', 'feed', 'ask', 'chat', 'saved']],
   ['Services', ['premium', 'myRequests']],
   ['Account', ['profile']]
 ];
@@ -897,7 +925,10 @@ function postCard(p, interactive) {
   if (!interactive) h += '<span>' + likes.length + ' reactions</span><span>' + pcs.length + ' answers</span>';
   h += '</div><div class="post-body">' + esc(p.body) + '</div>' + postImage(p);
   if (interactive) {
-    h += '<div class="post-actions"><button class="btn s o" data-act="like" data-id="' + esc(p.id) + '">' + (liked ? '♥' : '♡') + ' ' + likes.length + '</button><span style="color:var(--muted);font-size:.85rem">' + pcs.length + ' comments</span>';
+    const saved = cache.bookmarks.some((b) => b.post_id === p.id && b.user_id === currentUser.id);
+    h += '<div class="post-actions"><button class="btn s o" data-act="like" data-id="' + esc(p.id) + '">' + (liked ? '♥' : '♡') + ' ' + likes.length + '</button>';
+    h += '<button class="btn s o" data-act="bookmark" data-id="' + esc(p.id) + '">' + (saved ? '★ Saved' : '☆ Save') + '</button>';
+    h += '<span style="color:var(--muted);font-size:.85rem">' + pcs.length + ' comments</span>';
     if (p.user_id === currentUser.id || isAdmin()) h += '<button class="btn s d" data-act="delPost" data-id="' + esc(p.id) + '">Delete</button>';
     h += '</div>';
   }
@@ -906,6 +937,15 @@ function postCard(p, interactive) {
     h += '<div class="bar" style="margin-top:12px;margin-bottom:0"><input placeholder="Comment..." data-cmt-input="' + esc(p.id) + '"><button class="btn s" data-act="cmtSend" data-id="' + esc(p.id) + '">Comment</button></div>';
   }
   return h + '</div>';
+}
+
+
+function pageSaved() {
+  const ids = cache.bookmarks.filter((b) => b.user_id === currentUser.id).map((b) => b.post_id);
+  const posts = getPosts().filter((p) => ids.indexOf(p.id) >= 0 && canSeePost(p));
+  let h = '<h1>Saved Posts</h1><p class="sub">Posts you bookmarked. Only you can see this list.</p>';
+  if (!posts.length) return h + '<div class="card empty">No saved posts yet. Open Questions and tap Save.</div>';
+  return h + posts.map((p) => postCard(p, true)).join('');
 }
 
 function pageFeed() {
@@ -1036,6 +1076,7 @@ const ACTIONS = {
     if (r) { toast('Posted'); goTo('feed'); }
   },
   like: async (id) => { await toggleLike(id, currentUser.id); render(); },
+  bookmark: async (id) => { await toggleBookmark(id, currentUser.id); toast('Updated'); render(); },
   delPost: async (id) => {
     if (!confirm('Delete this question and all its answers?')) return;
     if (await deletePost(id)) { toast('Deleted'); render(); }
