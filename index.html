@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"> 
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Alaric — Health provider community</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -182,6 +182,17 @@ tr:hover td{background:rgba(94,167,212,.04)}
 .ps-hero{background:linear-gradient(135deg,rgba(94,167,212,.12),rgba(59,130,246,.06));border:1px solid rgba(94,167,212,.22);border-radius:16px;padding:16px 18px;margin-bottom:18px;display:flex;flex-direction:column;gap:4px}
 .ps-hero b{font-size:1rem}
 .ps-hero span{color:var(--muted);font-size:.85rem}
+.vid-row{display:flex;gap:14px;overflow-x:auto;padding-bottom:8px;margin-bottom:18px;-webkit-overflow-scrolling:touch}
+.vid-card{flex:0 0 min(280px,85vw);background:linear-gradient(180deg,rgba(15,28,42,.95),rgba(10,20,32,.98));border:1px solid var(--border);border-radius:16px;overflow:hidden}
+.vid-frame{aspect-ratio:16/9;background:#000}
+.vid-frame iframe{width:100%;height:100%;border:0;display:block}
+.vid-meta{padding:10px 12px;display:flex;flex-direction:column;gap:4px}
+.vid-meta span{font-size:.78rem;color:var(--muted)}
+.wf-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:18px}
+.wf-step{margin:0}
+.wf-step b{display:block;margin-bottom:4px}
+.wf-step span{font-size:.82rem;color:var(--muted)}
+.rev-card{margin-bottom:10px}
 </style>
 </head>
 <body>
