@@ -18,6 +18,19 @@ const uid = () => 'id_' + Math.random().toString(36).slice(2) + Date.now().toStr
 const fmtDate = (s) => String(s || '').slice(0, 10);
 const byCreated = (a, b) => String(a.created || '').localeCompare(String(b.created || ''));
 const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
+function youtubeEmbed(url) {
+  if (!url) return '';
+  const u = String(url);
+  let id = '';
+  const m1 = u.match(/[?&]v=([\w-]{6,})/);
+  const m2 = u.match(/youtu\.be\/([\w-]{6,})/);
+  const m3 = u.match(/youtube\.com\/embed\/([\w-]{6,})/);
+  if (m1) id = m1[1]; else if (m2) id = m2[1]; else if (m3) id = m3[1];
+  if (!id) return '';
+  return 'https://www.youtube.com/embed/' + id + '?rel=0';
+}
+
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ESC_MAP[c]);
 
 function toast(msg, type) {
@@ -138,7 +151,7 @@ async function doForgot() {
 
 /* ---------- Data layer (cloud = Supabase, otherwise localStorage) ---------- */
 let useCloud = false;
-const cache = { profiles: [], posts: [], comments: [], likes: [], chat: [], requests: [], bookmarks: [] };
+const cache = { profiles: [], posts: [], comments: [], likes: [], chat: [], requests: [], bookmarks: [], videos: [], reviews: [] };
 let requestsTable = true; // false when the service_requests table does not exist yet
 const lsKey = (k) => 'alaric_v2_' + k;
 const saveLocal = (k) => localStorage.setItem(lsKey(k), JSON.stringify(cache[k]));
@@ -168,6 +181,18 @@ const TABLES = {
     table: 'bookmarks',
     from: (b) => ({ user_id: b.user_id, post_id: b.post_id, created: b.created_at }),
     to: (b) => ({ user_id: b.user_id, post_id: b.post_id })
+  },
+  videos: {
+    table: 'learning_videos', order: ['sort_order', true],
+    cols: 'id,title,url,category,sort_order,active,created_at',
+    from: (v) => ({ id: v.id, title: v.title, url: v.url, category: v.category || '', sort: v.sort_order || 0, active: v.active !== false, created: v.created_at }),
+    to: (v) => ({ title: v.title, url: v.url, category: v.category || null, sort_order: v.sort || 0, active: v.active !== false })
+  },
+  reviews: {
+    table: 'reviews', order: ['created_at', false],
+    cols: 'id,user_id,body,rating,status,created_at',
+    from: (r) => ({ id: r.id, user_id: r.user_id, body: r.body, rating: r.rating || 5, status: r.status || 'pending', created: r.created_at }),
+    to: (r) => ({ user_id: r.user_id, body: r.body, rating: r.rating || 5, status: r.status || 'pending' })
   },
   chat: {
     table: 'chat_messages', order: ['created_at', true],
@@ -456,10 +481,11 @@ const PAGES = {
   request:   { label: 'Request',          fn: pageRequest, hidden: true },
   myRequests:{ label: 'My Requests',      fn: pageMyRequests },
   profile:   { label: 'My Profile',       fn: pageProfile },
-  saved:     { label: 'Saved Posts',      fn: pageSaved }
+  saved:     { label: 'Saved Posts',      fn: pageSaved },
+  content:   { label: 'Content',          fn: pageAdminContent }
 };
 const NAV_ADMIN = [
-  ['Control', ['seeAll', 'approvals', 'members', 'services']],
+  ['Control', ['seeAll', 'approvals', 'members', 'services', 'content']],
   ['Community', ['feed', 'chat']],
   ['Premium', ['premium']],
   ['Account', ['profile']]
@@ -842,6 +868,45 @@ function statCard(label, value, small) {
   return '<div class="card stat"><div class="l">' + label + '</div><div class="v"' + (small ? ' style="font-size:1.1rem"' : '') + '>' + value + '</div></div>';
 }
 
+
+function pageAdminContent() {
+  if (!isAdmin()) return '<div class="card empty">Admin only.</div>';
+  const vids = (cache.videos || []).slice().sort((a, b) => (a.sort || 0) - (b.sort || 0));
+  const pending = (cache.reviews || []).filter((r) => r.status === 'pending');
+  const approved = (cache.reviews || []).filter((r) => r.status === 'approved');
+  let h = '<h1>Content</h1><p class="sub">Add learning videos (YouTube links) and approve member reviews. These show on the member Home page.</p>';
+
+  h += '<div class="card"><h2 class="ps-h2" style="margin-top:0">Add video</h2>';
+  h += '<div class="auth-field"><label>Title</label><input id="vidTitle" placeholder="e.g. Claim rejection checklist"></div>';
+  h += '<div class="auth-field"><label>YouTube URL</label><input id="vidUrl" placeholder="https://www.youtube.com/watch?v=..."></div>';
+  h += '<div class="auth-field"><label>Category</label><input id="vidCat" placeholder="Billing / Safety / Credentialing"></div>';
+  h += '<div class="auth-field"><label>Sort order</label><input id="vidSort" type="number" value="0"></div>';
+  h += '<button class="btn" data-act="addVideo">Publish video</button></div>';
+
+  h += '<h2 class="ps-h2">Published videos</h2>';
+  if (!vids.length) h += '<div class="card empty">No videos yet.</div>';
+  else vids.forEach((v) => {
+    h += '<div class="card" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">';
+    h += '<div><b>' + esc(v.title) + '</b><div class="sub" style="margin:0">' + esc(v.category || '') + ' · ' + esc(v.url) + '</div></div>';
+    h += '<button class="btn s d" data-act="delVideo" data-id="' + esc(v.id) + '">Remove</button></div>';
+  });
+
+  h += '<h2 class="ps-h2">Pending reviews</h2>';
+  if (!pending.length) h += '<div class="card empty">No pending reviews.</div>';
+  else pending.forEach((r) => {
+    h += '<div class="card"><div class="post-meta"><span>' + esc(publicName(r.user_id)) + '</span><span>' + (r.rating || 5) + '★</span></div><div class="post-body">' + esc(r.body) + '</div>';
+    h += '<div class="post-actions"><button class="btn s ok" data-act="approveReview" data-id="' + esc(r.id) + '">Approve</button> ';
+    h += '<button class="btn s d" data-act="rejectReview" data-id="' + esc(r.id) + '">Reject</button></div></div>';
+  });
+
+  h += '<h2 class="ps-h2">Approved reviews (' + approved.length + ')</h2>';
+  if (!approved.length) h += '<div class="card empty">None yet.</div>';
+  else approved.slice(0, 20).forEach((r) => {
+    h += '<div class="card"><div class="post-meta"><span>' + esc(publicName(r.user_id)) + '</span><span class="pill ok">' + (r.rating || 5) + '★</span></div><div class="post-body">' + esc(r.body) + '</div></div>';
+  });
+  return h;
+}
+
 function pageMemberHome() {
   const me = getProfile(currentUser.id) || {};
   const mine = getPosts().filter((p) => p.user_id === currentUser.id);
@@ -862,6 +927,51 @@ function pageMemberHome() {
   }
   h += '<div class="stats">' + statCard('My questions', mine.length) + statCard('Status', st, true) + '</div>';
   h += '<div class="mh-actions">' + tiles.map((t) => '<button class="btn o mh-tile" data-act="nav" data-id="' + t[3] + '"><span class="mh-tile-icon">' + t[0] + '</span><span><b>' + t[1] + '</b><small>' + t[2] + '</small></span></button>').join('') + '</div>';
+
+  // Learning videos
+  const vids = (cache.videos || []).filter((v) => v.active !== false).sort((a, b) => (a.sort || 0) - (b.sort || 0));
+  h += '<h2 class="ps-h2">Learning videos</h2>';
+  h += '<p class="sub" style="margin-top:-8px">Short guidance from the Alaric team. Free community help never requires upfront payment.</p>';
+  if (!vids.length) {
+    h += '<div class="card empty">Videos coming soon. Admin can add them from Content.</div>';
+  } else {
+    h += '<div class="vid-row">';
+    vids.forEach((v) => {
+      const emb = youtubeEmbed(v.url);
+      h += '<div class="vid-card"><div class="vid-frame">';
+      if (emb) h += '<iframe src="' + emb + '" title="' + esc(v.title) + '" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>';
+      else h += '<a class="btn s" href="' + esc(v.url) + '" target="_blank" rel="noopener">Open video</a>';
+      h += '</div><div class="vid-meta"><b>' + esc(v.title) + '</b>' + (v.category ? '<span>' + esc(v.category) + '</span>' : '') + '</div></div>';
+    });
+    h += '</div>';
+  }
+
+  // Workflow
+  h += '<h2 class="ps-h2">Your path on Alaric</h2>';
+  h += '<div class="wf-grid">' +
+    '<div class="card wf-step"><b>1. Get approved</b><span>Admin reviews your professional account</span></div>' +
+    '<div class="card wf-step"><b>2. Ask freely</b><span>Community questions and guidance stay free</span></div>' +
+    '<div class="card wf-step"><b>3. Learn</b><span>Watch short videos on billing, claims, safety</span></div>' +
+    '<div class="card wf-step"><b>4. Hire only if needed</b><span>Paid team work is agreed before it starts</span></div>' +
+    '</div>';
+
+  // Reviews
+  const revs = (cache.reviews || []).filter((r) => r.status === 'approved');
+  h += '<h2 class="ps-h2">Member reviews</h2>';
+  if (!revs.length) h += '<div class="card empty">No public reviews yet.</div>';
+  else {
+    revs.slice(0, 8).forEach((r) => {
+      const who = publicName(r.user_id);
+      h += '<div class="card rev-card"><div class="post-meta"><span>' + esc(who) + '</span><span class="pill ok">' + (r.rating || 5) + '★</span><span>' + esc(fmtDate(r.created)) + '</span></div><div class="post-body">' + esc(r.body) + '</div></div>';
+    });
+  }
+  if (isApproved()) {
+    h += '<div class="card"><b>Share your experience</b><p class="sub">Reviews are checked by admin before they appear publicly.</p>' +
+      '<div class="auth-field"><label>Your review</label><textarea id="revBody" rows="3" placeholder="How did Alaric community or team help you?"></textarea></div>' +
+      '<div class="auth-field"><label>Rating</label><select id="revRating"><option value="5">5</option><option value="4">4</option><option value="3">3</option><option value="2">2</option><option value="1">1</option></select></div>' +
+      '<button class="btn" data-act="submitReview">Submit review</button></div>';
+  }
+
   h += '<div class="disc-bar"><span>ℹ️</span><div><b>Free community help.</b> Asking questions and getting community guidance is free. Alaric never asks for upfront payment for free assistance. Paid services are agreed with you before any work starts.</div></div>';
   h += '<div class="card premium-strip"><div><b>Need hands-on help?</b> <span style="color:var(--muted)">The Alaric team can take on your billing, credentialing, front desk or marketing.</span></div><button class="btn s" data-act="nav" data-id="premium">View services</button></div>';
   return h;
@@ -1077,6 +1187,55 @@ const ACTIONS = {
   },
   like: async (id) => { await toggleLike(id, currentUser.id); render(); },
   bookmark: async (id) => { await toggleBookmark(id, currentUser.id); toast('Updated'); render(); },
+  addVideo: async () => {
+    if (!isAdmin()) return;
+    const title = ($('vidTitle') && $('vidTitle').value || '').trim();
+    const url = ($('vidUrl') && $('vidUrl').value || '').trim();
+    const category = ($('vidCat') && $('vidCat').value || '').trim();
+    const sort = parseInt(($('vidSort') && $('vidSort').value) || '0', 10) || 0;
+    if (!title || !url) return toast('Title and YouTube URL required', 'error');
+    const row = await addRecord('videos', { title, url, category, sort, active: true });
+    if (row) { toast('Video published'); render(); }
+  },
+  delVideo: async (id) => {
+    if (!isAdmin()) return;
+    if (!confirm('Remove this video from Home?')) return;
+    if (useCloud) {
+      const r = await sb.from('learning_videos').delete().eq('id', id);
+      if (r.error) return toast(r.error.message, 'error');
+    }
+    cache.videos = (cache.videos || []).filter((v) => v.id !== id);
+    toast('Removed'); render();
+  },
+  submitReview: async () => {
+    const body = ($('revBody') && $('revBody').value || '').trim();
+    const rating = parseInt(($('revRating') && $('revRating').value) || '5', 10) || 5;
+    if (!body) return toast('Write a short review', 'error');
+    const row = await addRecord('reviews', { user_id: currentUser.id, body, rating, status: 'pending' });
+    if (row) { toast('Review submitted for admin approval'); render(); }
+  },
+  approveReview: async (id) => {
+    if (!isAdmin()) return;
+    const r = cache.reviews.find((x) => x.id === id);
+    if (!r) return;
+    if (useCloud) {
+      const up = await sb.from('reviews').update({ status: 'approved' }).eq('id', id);
+      if (up.error) return toast(up.error.message, 'error');
+    }
+    r.status = 'approved';
+    toast('Review approved'); render();
+  },
+  rejectReview: async (id) => {
+    if (!isAdmin()) return;
+    if (useCloud) {
+      const up = await sb.from('reviews').update({ status: 'rejected' }).eq('id', id);
+      if (up.error) return toast(up.error.message, 'error');
+    }
+    const r = cache.reviews.find((x) => x.id === id);
+    if (r) r.status = 'rejected';
+    toast('Review rejected'); render();
+  },
+
   delPost: async (id) => {
     if (!confirm('Delete this question and all its answers?')) return;
     if (await deletePost(id)) { toast('Deleted'); render(); }
